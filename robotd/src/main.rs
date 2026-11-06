@@ -1153,6 +1153,13 @@ fn bus_config(bus: &params::Bus) -> Result<BusConfig, String> {
                 signs: per_joint(&bus.joint_signs, 1, "bus.joint_signs")?,
                 offsets: per_joint(&bus.joint_offsets, 0, "bus.joint_offsets")?,
                 imu: bus.imu,
+                imu_source: match bus.imu_source {
+                    params::ImuSource::Bus => duck_control::feetech::ImuSource::Bus,
+                    params::ImuSource::Bno055 => duck_control::feetech::ImuSource::Bno055 {
+                        device: bus.imu_i2c.clone(),
+                        address: bus.imu_i2c_address,
+                    },
+                },
                 current_limit_ma: bus.current_limit_ma,
                 // Mouth: JOINT_NAMES 9.
                 // A mouth that wakes to speak is the control loop's to let go (`mouth_asleep`).
@@ -4736,7 +4743,7 @@ mod tests {
         voiced.has_voice = true;
         voiced.voice_seed = Some(3_764_158_588);
         let r: proto::SpeakResult =
-            dispatch(&voiced, &intents, id(), &say("kai1 xin1 ya5 ！", "开心"))
+            dispatch(&voiced, &intents, id(), &say("kai1 xin1 ya5 !", "happy"))
                 .result_as()
                 .unwrap();
         assert!(r.accepted, "{r:?}");

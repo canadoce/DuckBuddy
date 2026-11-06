@@ -18,6 +18,9 @@
 //!   costs no transaction of its own: it reports what the last tick already read.
 //! - **Three RAM registers must be written at every power-up or the servo does not move**:
 //!   goal current (44), running speed (46) and acceleration (41). See [`FeetechIo::check_registers`].
+//! - **The IMU need not be on the bus.** A robot without the PDB/IMU board carries a BNO055 on
+//!   I²C instead ([`ImuSource::Bno055`], see [`crate::bno055`]); the tick's `sync_read` then
+//!   covers the servos alone and the orientation comes from that chip's newest sample.
 //! - **The ID → joint mapping is configuration**, not a constant: the servos were numbered
 //!   1..15 down the harness on this robot, not 10–34 by limb as the original was.
 
@@ -26,6 +29,7 @@ use std::time::Duration;
 
 use rustypot::servo::feetech::sts3215::Sts3215Controller;
 
+use crate::bno055::{self, Bno055, Bno055Decoder};
 use crate::bus::StaleImuTracker;
 use crate::imu::{IMU_BLOCK_LEN, SflpDecoder};
 use crate::io::{ImuStale, IoError, JointTargets, Result, RobotIo, Sensors, SlowSensors};
@@ -119,6 +123,16 @@ const READ_TIMEOUT: Duration = Duration::from_millis(30);
 
 // ── configuration ────────────────────────────────────────────────────────────
 
+/// Where the robot's IMU is.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImuSource {
+    /// The PDB/IMU board, ID 200 on the servo bus, read in the tick's `sync_read`.
+    Bus,
+    /// A BNO055 on I²C (the Robot HAT E1 build): `device` is the i2c-dev node, `address` the
+    /// chip's 7-bit address.
+    Bno055 { device: String, address: u8 },
+}
+
 /// Which servo is which joint, and how its encoder maps onto the joint angle.
 ///
 /// Everything is indexed as [`crate::model::JOINT_NAMES`].
@@ -136,6 +150,8 @@ pub struct FeetechConfig {
     /// loop then reads only the servos, and [`RobotIo::imu_ready`] stays false so nothing that
     /// needs orientation will run.
     pub imu: bool,
+    /// Where the IMU is, when [`Self::imu`] is on.
+    pub imu_source: ImuSource,
     /// Current each servo may draw, mA. Written to [`GOAL_CURRENT`] at bring-up.
     pub current_limit_ma: f64,
     /// Joints left out of every torque-enable and goal write, so their servo stays limp while
@@ -279,6 +295,11 @@ pub struct FeetechIo {
     ids: Vec<u8>,
     imu: SflpDecoder,
     stale_imu: StaleImuTracker,
+    /// The BNO055 and its decoder, when that is where the IMU is ([`ImuSource::Bno055`]).
+    bno: Option<(Bno055, Bno055Decoder)>,
+    /// Samples identical to their predecessor: the polling thread stopped refreshing, or the
+    /// chip stopped fusing.
+    stale_bno: StaleImuTracker<{ bno055::BLOCK_LEN }>,
     /// Voltage and temperatures from the last tick, which is where [`RobotIo::slow_sensors`]
     /// gets them — they arrive in the tick's block for free.
     last_slow: Option<SlowSensors>,
@@ -312,8 +333,21 @@ impl FeetechIo {
 
         let mut ids = Vec::with_capacity(NUM_JOINTS + 1);
         ids.extend_from_slice(&config.ids);
+        let mut bno = None;
         if config.imu {
-            ids.push(IMU_DXL_ID);
+            match &config.imu_source {
+                ImuSource::Bus => ids.push(IMU_DXL_ID),
+                ImuSource::Bno055 { device, address } => {
+                    let chip = Bno055::open(device, *address).map_err(|source| IoError::Imu {
+                        path: device.clone(),
+                        source,
+                    })?;
+                    bno = Some((
+                        chip,
+                        Bno055Decoder::new(config.imu_mount, config.imu_median),
+                    ));
+                }
+            }
         }
 
         let imu = SflpDecoder::new(config.imu_mount).with_median(config.imu_median);
@@ -324,6 +358,8 @@ impl FeetechIo {
             ids,
             imu,
             stale_imu: StaleImuTracker::default(),
+            bno,
+            stale_bno: StaleImuTracker::default(),
             last_slow: None,
             last_status: [0; NUM_JOINTS],
             torque_on: false,
@@ -564,7 +600,21 @@ impl RobotIo for FeetechIo {
         }
 
         let mut sensors = Sensors::default();
-        let servo_blocks = if self.config.imu {
+        if let Some((chip, decoder)) = &mut self.bno {
+            let sample = chip.latest().map_err(IoError::Bus)?;
+            let run = self.stale_bno.observe(&sample.raw);
+            if run == crate::bus::STALE_RUN_WARN
+                || (run > crate::bus::STALE_RUN_WARN && run.is_multiple_of(500))
+            {
+                tracing::warn!(
+                    consecutive = run,
+                    total = self.stale_bno.stale.total,
+                    "BNO055 has returned the same sample {run} reads running — orientation is frozen"
+                );
+            }
+            sensors.imu = decoder.decode(&sample);
+        }
+        let servo_blocks = if self.config.imu && self.bno.is_none() {
             let block = &blocks[NUM_JOINTS];
             if block.len() < IMU_BLOCK_LEN {
                 return Err(IoError::ShortRead {
@@ -712,11 +762,19 @@ impl RobotIo for FeetechIo {
     }
 
     fn imu_stale(&self) -> ImuStale {
-        self.stale_imu.stale
+        if self.bno.is_some() {
+            self.stale_bno.stale
+        } else {
+            self.stale_imu.stale
+        }
     }
 
     fn imu_ready(&self) -> bool {
-        self.config.imu && self.imu.ready()
+        self.config.imu
+            && match &self.bno {
+                Some((_, decoder)) => decoder.ready(),
+                None => self.imu.ready(),
+            }
     }
 }
 
@@ -730,6 +788,7 @@ mod tests {
             signs: [1; NUM_JOINTS],
             offsets: [0; NUM_JOINTS],
             imu: true,
+            imu_source: ImuSource::Bus,
             current_limit_ma: 2925.0,
             limp: [false; NUM_JOINTS],
             imu_mount: SflpDecoder::DEFAULT_MOUNT,

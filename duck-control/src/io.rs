@@ -68,6 +68,13 @@ pub enum IoError {
     },
     #[error("simulated failure")]
     Simulated,
+    /// The IMU on I²C (see [`crate::bno055`]) could not be opened or set up.
+    #[error("IMU on {path}: {source}")]
+    Imu {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, IoError>;

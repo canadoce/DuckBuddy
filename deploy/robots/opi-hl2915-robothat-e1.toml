@@ -1,0 +1,48 @@
+# robotd.toml for a MicroDuck built with the Robot HAT E1 and no PDB/IMU board:
+# Orange Pi Zero 3W (A733) + Robot HAT E1 in the head, 15 Feetech HL-2915 servos on the HAT's
+# servo bus, a BNO055 in the body on the HAT's Qwiic J5. Copy to /etc/robot/robotd.toml
+# (or run `robotd --params <this file>`).
+#
+# Not calibrated yet. Before robotd will run the robot, fill in with tools/bringup:
+#   joint_ids     - the "Joint mapping" page (each servo's ID, in JOINT_NAMES order)
+#   joint_offsets - the "Zero calibration" page
+#   imu_axes      - the "Whole-robot test" page, IMU line: the sensor axis that carries
+#                   gravity with the robot upright and lying on its back
+# joint_signs are the rev-a robot's (deploy/robots/opi-hl2915-rev-a.toml): the printed parts
+# hold the servos the same way. Check them on the "Joint mapping" page all the same.
+
+[bus]
+# UART0, header pins 8/10. The installer (deploy/audio/install-aic3104-a733.sh --hat robothat-e1)
+# moves the serial console off it.
+port = "/dev/ttyS0"
+servo = "feetech_hls"
+#             L-yaw roll pitch knee ankle neck head  yaw  roll mouth R-yaw roll pitch knee ankle
+joint_ids     = []
+joint_signs   = [-1, -1,  -1,  -1,  -1,   1,   1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1]
+joint_offsets = []
+imu = true
+# The BNO055 breakout (Adafruit 4646, address 0x28) on Qwiic J5: TWI0, /dev/i2c-0.
+imu_source = "bno055"
+imu_i2c = "/dev/i2c-0"
+imu_i2c_address = 40
+# Placeholder until measured: the sensor's own axes as the trunk's (x forward, y left, z up).
+# On the LiPo plate (hardware/cad/lipo-plate) the board stands upright with its chip facing
+# forward, so expect the trunk's x to come from the sensor's z.
+imu_axes = "x,y,z"
+imu_median = false
+position_kp = 16
+position_kp_head = 16
+position_kd = 8
+# Half the servos' own 2925 mA while bringing the robot up.
+current_limit_ma = 1300.0
+mouth_torque = false
+mouth_wake = true
+
+[thermal]
+walk_max_c = 70.0
+
+[battery]
+# HL-2915s, rated 9-14 V: a 3S LiPo or LiHV, into the HAT's XT60 (J15). The HAT's D5 must be
+# the SMBJ15A for 3S (elec_RPI_Robot_HAT/docs/12V_battery_swap.md).
+cells = [3]
+max_volts = 14.0

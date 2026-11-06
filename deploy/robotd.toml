@@ -14,7 +14,8 @@
 
 [bus]
 # Serial port the 15 servos and the imu_to_dxl board share. /dev/ttyS7 is UART7 on the
-# Orange Pi Zero 3W (A733); a board wired differently can also be overridden per-invocation
+# Orange Pi Zero 3W (A733) with the HAT R3E; with the Robot HAT E1 it is /dev/ttyS0 (UART0,
+# header pins 8/10). A board wired differently can also be overridden per-invocation
 # with `robotd --port`, which is the dev escape hatch rather than the thing to edit here.
 port = "/dev/ttyS7"
 
@@ -36,8 +37,20 @@ port = "/dev/ttyS7"
 # firmware exists; orientation then reads as not ready and nothing needing it will run.
 # imu = true
 
+# Feetech: where the IMU is. "bus" is the PDB/IMU board (ID 200 on the servo bus);
+# "bno055" is a BNO055 on I2C, the Robot HAT E1 build, which has no PDB: the breakout in the
+# body on a Qwiic cable to the HAT's J5 (TWI0, /dev/i2c-0). Not J8: the ToF there holds that
+# bus for 10-30 ms per frame, longer than the IMU delay the walking policies tolerate.
+# imu_source = "bus"
+# imu_i2c = "/dev/i2c-0"
+# 40 = 0x28 (the Adafruit breakout), 41 = 0x29 with its ADR pin high.
+# imu_i2c_address = 40
+
 # Feetech: how the IMU chip sits in the trunk — the sensor axis behind trunk x (forward),
-# y (left), z (up). "z,y,-x" is the original board; the rev-a PDB R2f is "y,x,-z".
+# y (left), z (up). "z,y,-x" is the original board; the rev-a PDB R2f is "y,x,-z";
+# the open PDB/IMU R3 (hardware/pcb/pdb-imu) is "-y,x,z", not yet checked on a robot.
+# For a BNO055 it depends on how the breakout is fixed in the body: the bring-up tool's IMU
+# test reads it with the robot upright and lying on its back.
 # imu_axes = "z,y,-x"
 
 # Feetech: the servos' live position Kp/Kd (registers 50/51). Kp is the value at the policies'

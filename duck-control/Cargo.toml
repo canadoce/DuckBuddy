@@ -24,6 +24,8 @@ tracing.workspace = true
 # internally, so a successful probe means its own load will succeed too — see
 # `policy::ensure_runtime` for why that matters.
 libloading = "0.8"
+# i2c-dev ioctl for the BNO055 (`bno055`).
+libc = "0.2"
 ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic"] }
 
 # 1.6.0 is a floor, not a preference: it de-stuffs protocol 2.0 status packets whose payload
