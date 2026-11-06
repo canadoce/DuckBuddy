@@ -104,6 +104,21 @@ pub const REGISTRY: &[Entry] = &[
         "Feetech: IMU board on the bus (off until its firmware exists)",
     ),
     entry(
+        "bus.imu_source",
+        Kind::Choice(&["bus", "bno055"]),
+        "Feetech: where the IMU is: the PDB/IMU board on the bus, or a BNO055 on I2C",
+    ),
+    entry(
+        "bus.imu_i2c",
+        Kind::Text,
+        "Feetech, BNO055: i2c-dev node (/dev/i2c-0 = Robot HAT E1 Qwiic J5)",
+    ),
+    entry(
+        "bus.imu_i2c_address",
+        Kind::Integer,
+        "Feetech, BNO055: 7-bit I2C address (40 = 0x28, 41 = 0x29)",
+    ),
+    entry(
         "bus.imu_axes",
         Kind::Text,
         "Feetech: sensor axis behind trunk x,y,z, e.g. \"y,x,-z\"",

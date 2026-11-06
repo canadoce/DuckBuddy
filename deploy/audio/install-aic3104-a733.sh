@@ -1,4 +1,12 @@
 #!/bin/sh
+# Install the TLV320AIC3104 codec modules, the head HAT's DT overlay and the
+# mixer service on an Orange Pi Zero 3W (A733).
+#
+#   sudo sh install-aic3104-a733.sh [--hat r3e|robothat-e1] linux-sun60iw2-6.6.98.tar.gz
+#
+#   --hat r3e          HAT R3E (default): codec on TWI2, servo bus on UART7 (/dev/ttyS7)
+#   --hat robothat-e1  Robot HAT E1: codec on TWI0, servo bus on UART0 (/dev/ttyS0);
+#                      also moves the serial console off UART0
 set -eu
 
 KERNEL_VERSION="$(uname -r)"
@@ -20,7 +28,24 @@ grep -qx 'BOARDFAMILY=sun60iw2' /etc/orangepi-release || \
 	die "this installer only supports the A733/sun60iw2 board family"
 [ "$KERNEL_VERSION" = "$EXPECTED_KERNEL" ] || \
 	die "expected $EXPECTED_KERNEL, running $KERNEL_VERSION"
-[ "$#" -eq 1 ] || die "usage: sudo $0 /path/to/linux-sun60iw2-6.6.98.tar.gz"
+HAT=r3e
+if [ "${1:-}" = --hat ]; then
+	[ "$#" -ge 2 ] || die "--hat needs a value: r3e or robothat-e1"
+	HAT=$2
+	shift 2
+fi
+case "$HAT" in
+	r3e)
+		OVERLAY_SOURCE=aic3104-a733.dts
+		SERVICE_SOURCE=aic3104-a733.service
+		;;
+	robothat-e1)
+		OVERLAY_SOURCE=aic3104-a733-robothat.dts
+		SERVICE_SOURCE=aic3104-a733-robothat.service
+		;;
+	*) die "unknown HAT: $HAT (r3e or robothat-e1)" ;;
+esac
+[ "$#" -eq 1 ] || die "usage: sudo $0 [--hat r3e|robothat-e1] /path/to/linux-sun60iw2-6.6.98.tar.gz"
 
 SOURCE_ARCHIVE=$1
 [ -f "$SOURCE_ARCHIVE" ] || die "kernel source archive not found: $SOURCE_ARCHIVE"
@@ -67,7 +92,7 @@ OVERLAY_DIR="/boot/dtb-$KERNEL_VERSION/allwinner/overlay"
 [ -d "$OVERLAY_DIR" ] || die "overlay directory not found: $OVERLAY_DIR"
 DTBO=$(mktemp)
 trap 'rm -f "$DTBO"' EXIT HUP INT TERM
-dtc -@ -I dts -O dtb -o "$DTBO" "$SCRIPT_DIR/aic3104-a733.dts"
+dtc -@ -I dts -O dtb -o "$DTBO" "$SCRIPT_DIR/$OVERLAY_SOURCE"
 install -m 0644 "$DTBO" "$OVERLAY_DIR/sun60i-a733-$OVERLAY_NAME.dtbo"
 
 ENV_FILE=/boot/orangepiEnv.txt
@@ -88,15 +113,34 @@ install -m 0755 "$SCRIPT_DIR/aic3104-init.sh" /usr/local/bin/aic3104-init.sh
 # A checkout prepared on Windows may carry CRLF even though the target is
 # Linux. Strip the carriage return so the shebang remains executable.
 sed -i 's/\r$//' /usr/local/bin/aic3104-init.sh
-install -m 0644 "$SCRIPT_DIR/aic3104-a733.service" \
+install -m 0644 "$SCRIPT_DIR/$SERVICE_SOURCE" \
 	/etc/systemd/system/aic3104-a733.service
 systemctl daemon-reload
 systemctl enable aic3104-a733.service
+
+if [ "$HAT" = robothat-e1 ]; then
+	# The Robot HAT E1 has the servo bus on header pins 8/10, which are UART0,
+	# the board's debug console. Take the kernel console and the login getty
+	# off it, so neither writes to the servos. U-Boot still prints its boot
+	# messages there at 115200 baud before Linux starts.
+	if grep -q '^console=' "$ENV_FILE"; then
+		sed -i 's/^console=.*/console=display/' "$ENV_FILE"
+	else
+		printf 'console=display\n' >> "$ENV_FILE"
+	fi
+	systemctl mask serial-getty@ttyS0.service
+	echo "Serial console moved off UART0 (console=display, serial-getty@ttyS0 masked)."
+fi
 
 # Loading the modules is safe without the HAT. The codec will only bind after
 # the overlay exists and an AIC3104 acknowledges address 0x18.
 modprobe snd-soc-tlv320aic3x
 modprobe snd-soc-tlv320aic3x-i2c
 
-echo "Installed AIC3104 modules and $OVERLAY_NAME overlay."
-echo "Reboot, then check: aplay -l; i2cdetect -y 2; dmesg | grep -Ei 'aic3|sound-mach'"
+echo "Installed AIC3104 modules and the $OVERLAY_NAME overlay for the $HAT HAT."
+if [ "$HAT" = robothat-e1 ]; then
+	echo "Reboot, then check: aplay -l; ls /sys/bus/i2c/devices/*-0018; dmesg | grep -Ei 'aic3|sound-mach'"
+	echo "Set [bus] port = \"/dev/ttyS0\" in /etc/robot/robotd.toml."
+else
+	echo "Reboot, then check: aplay -l; i2cdetect -y 2; dmesg | grep -Ei 'aic3|sound-mach'"
+fi

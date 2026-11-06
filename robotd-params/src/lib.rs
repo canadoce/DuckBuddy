@@ -954,6 +954,16 @@ pub struct Bus {
     /// firmware exists — the loop then reads the servos alone and reports orientation as not
     /// ready, so nothing that needs it will run.
     pub imu: bool,
+    /// Feetech only: where the IMU is. `bus` is the PDB/IMU board, ID 200 on the servo bus;
+    /// `bno055` is a BNO055 on I²C (the Robot HAT E1 build, which has no PDB), at
+    /// [`Self::imu_i2c`] / [`Self::imu_i2c_address`].
+    pub imu_source: ImuSource,
+    /// Feetech, `imu_source = "bno055"`: the i2c-dev node. `/dev/i2c-0` is TWI0 on the Orange Pi
+    /// Zero 3W (header pins 3/5), the Robot HAT E1's Qwiic J5.
+    pub imu_i2c: String,
+    /// Feetech, `imu_source = "bno055"`: the chip's 7-bit address — 40 (0x28) on the Adafruit
+    /// breakout, 41 (0x29) with its ADR pin high.
+    pub imu_i2c_address: u8,
     /// Feetech only: how the IMU chip sits in the trunk, as the sensor axis behind each trunk
     /// axis (x forward, y left, z up): `"z,y,-x"` means trunk x = sensor z, y = sensor y,
     /// z = −sensor x, which is the original board. Found by laying the robot on its back and
@@ -998,6 +1008,26 @@ pub struct Bus {
     /// sound playing (lip sync) or an open-mouth intent — and let it go limp again 0.3 s after.
     /// Closed and idle the beak holds nothing, so it does not heat (2026-10-14).
     pub mouth_wake: bool,
+}
+
+/// Where the robot's IMU is.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImuSource {
+    /// The PDB/IMU board on the servo bus.
+    #[default]
+    Bus,
+    /// A BNO055 on I²C.
+    Bno055,
+}
+
+impl ImuSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImuSource::Bus => "bus",
+            ImuSource::Bno055 => "bno055",
+        }
+    }
 }
 
 /// The servo family on the bus.
@@ -1090,6 +1120,9 @@ impl Default for Bus {
             joint_signs: Vec::new(),
             joint_offsets: Vec::new(),
             imu: true,
+            imu_source: ImuSource::default(),
+            imu_i2c: "/dev/i2c-0".into(),
+            imu_i2c_address: 0x28,
             imu_axes: "z,y,-x".into(),
             imu_pitch_trim_deg: 0.0,
             imu_roll_trim_deg: 0.0,
@@ -1522,6 +1555,18 @@ limp_fall_hand_back = false
         assert_eq!(media.bitrate_resolved(), 2_000_000);
     }
 
+    /// The Robot HAT E1 robot's file parses, and says what that build needs: no PDB, so the
+    /// IMU is the BNO055 on Qwiic J5, and the servos are on UART0.
+    #[test]
+    fn the_robot_hat_e1_config_parses() {
+        let file = include_str!("../../deploy/robots/opi-hl2915-robothat-e1.toml");
+        let p: Params = toml::from_str(file).expect("opi-hl2915-robothat-e1.toml must parse");
+        assert_eq!(p.bus.port, "/dev/ttyS0");
+        assert_eq!(p.bus.imu_source, ImuSource::Bno055);
+        assert_eq!(p.bus.imu_i2c, "/dev/i2c-0");
+        assert_eq!(p.bus.imu_i2c_address, 0x28);
+    }
+
     /// The shipped example must agree with the built-in defaults, or the file documents a
     /// robot that does not exist — and an operator reading it would draw wrong conclusions
     /// about what their board is actually doing.
@@ -1535,6 +1580,9 @@ limp_fall_hand_back = false
         assert_eq!(from_file.bus.servo, built_in.bus.servo);
         assert_eq!(from_file.bus.joint_ids, built_in.bus.joint_ids);
         assert_eq!(from_file.bus.imu, built_in.bus.imu);
+        assert_eq!(from_file.bus.imu_source, built_in.bus.imu_source);
+        assert_eq!(from_file.bus.imu_i2c, built_in.bus.imu_i2c);
+        assert_eq!(from_file.bus.imu_i2c_address, built_in.bus.imu_i2c_address);
         assert_eq!(from_file.bus.imu_axes, built_in.bus.imu_axes);
         assert_eq!(from_file.bus.position_kp, built_in.bus.position_kp);
         assert_eq!(

@@ -64,18 +64,19 @@ pub(crate) const STALE_RUN_WARN: u64 = 25;
 /// describes is one nothing else on the robot reports, and it would otherwise be verifiable
 /// only against broken hardware.
 #[derive(Debug, Default)]
-pub(crate) struct StaleImuTracker {
+pub(crate) struct StaleImuTracker<const N: usize = IMU_BLOCK_LEN> {
     /// `None` until the first block. A fixed initial value cannot work here: it would have to
     /// be all zeros, and an all-zero block is exactly what a board whose SFLP table is still
     /// empty sends — scoring a stale read against a predecessor that never existed.
-    last: Option<[u8; IMU_BLOCK_LEN]>,
+    last: Option<[u8; N]>,
     pub(crate) stale: ImuStale,
 }
 
-impl StaleImuTracker {
+impl<const N: usize> StaleImuTracker<N> {
     /// Records one block and returns the length of the run it belongs to — 0 when the block is
-    /// fresh, which is the overwhelmingly common answer.
-    pub(crate) fn observe(&mut self, block: &[u8; IMU_BLOCK_LEN]) -> u64 {
+    /// fresh, which is the overwhelmingly common answer. `N` is the block's length: the bus
+    /// board's 12 bytes, or a BNO055 sample's 20.
+    pub(crate) fn observe(&mut self, block: &[u8; N]) -> u64 {
         if self.last.replace(*block) == Some(*block) {
             self.stale.total = self.stale.total.saturating_add(1);
             self.stale.run = self.stale.run.saturating_add(1);

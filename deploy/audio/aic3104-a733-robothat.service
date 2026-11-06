@@ -1,0 +1,19 @@
+[Unit]
+Description=MicroDuck TLV320AIC3104 mixer setup (Robot HAT E1)
+After=systemd-modules-load.service
+Before=robotd.service
+
+[Service]
+Type=oneshot
+# The codec is on TWI0; its bus number comes from sysfs.
+Environment=AIC3104_I2C_BUS=auto
+# The two head mics on the screw terminals J2 (left) and J9 (right).
+# mic2r-both uses the onboard MEMS mic instead (no direction finding).
+Environment=AIC3104_MIC_ROUTE=line1-se
+# The PAM8406 clips at +9 dB line output gain with a full-scale signal.
+Environment=AIC3104_LOP_GAIN=0
+ExecStart=/usr/local/bin/aic3104-init.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
