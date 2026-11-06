@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-"""把总线上的飞特 HLS 舵机改成新波特率（写 EEPROM，掉电保存）。
+"""Change the Feetech HLS servos on the bus to a new baud rate (written to EEPROM, kept after power off).
 
-Orange Pi A733 的 UART7 只能准确输出 500k（1M 实际是 750k），所以舵机总线统一用 500k。
+The Orange Pi A733 UART7 can only output 500k accurately (1M is really 750k), so the servo bus always uses 500k.
 
-用法（先关掉 FD 上位机，它会独占串口）：
-    python tools/servo/set_baud.py                 # 默认 COM11，只允许总线上有 1 只舵机
-    python tools/servo/set_baud.py --all           # 总线上所有舵机一起改（整链）
-    python tools/servo/set_baud.py --to 1000000    # 改回 1M
-    python tools/servo/set_baud.py --scan          # 只扫描，不改
+Usage (close the FD desktop app first, it holds the serial port):
+    python tools/servo/set_baud.py                 # default COM11, only 1 servo allowed on the bus
+    python tools/servo/set_baud.py --all           # change all servos on the bus together (whole chain)
+    python tools/servo/set_baud.py --to 1000000    # change back to 1M
+    python tools/servo/set_baud.py --scan          # scan only, no change
 
-只写 55（锁标志）和 6（波特率）两个地址，不碰扭矩/位置，舵机不会动。
+Only writes two addresses, 55 (lock flag) and 6 (baud rate). Torque/position are not touched, so the servos do not move.
 """
 import argparse
 import sys
@@ -17,11 +17,11 @@ import time
 
 from fts_bus import Bus, LOCK, BAUD_ADDR
 
-BAUDS = [1000000, 500000, 250000, 128000, 115200, 76800, 57600, 38400]  # 寄存器 6 的编号 0..7
+BAUDS = [1000000, 500000, 250000, 128000, 115200, 76800, 57600, 38400]  # register 6 values 0..7
 
 
 def scan_all(port, bauds):
-    """在每个波特率下扫一遍，返回 {baud: [ids]}（只列有舵机的）。"""
+    """Scan once at each baud rate, return {baud: [ids]} (only rates with servos are listed)."""
     found = {}
     for b in bauds:
         bus = Bus(port, b)
@@ -39,25 +39,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", default="COM11")
     ap.add_argument("--to", type=int, default=500000, choices=BAUDS)
-    ap.add_argument("--all", action="store_true", help="允许一次改多只")
-    ap.add_argument("--scan", action="store_true", help="只扫描")
+    ap.add_argument("--all", action="store_true", help="allow changing several servos at once")
+    ap.add_argument("--scan", action="store_true", help="scan only")
     a = ap.parse_args()
 
-    print(f"扫描 {a.port} ...")
+    print(f"Scanning {a.port} ...")
     found = scan_all(a.port, BAUDS)
     if a.scan:
         return 0
     if not found:
-        print("没找到舵机：检查供电、线序，以及 FD 上位机是否还开着。")
+        print("No servos found: check power, wire order, and whether the FD desktop app is still open.")
         return 1
 
     old = {(b, i) for b, ids in found.items() for i in ids}
     ids = sorted({i for _, i in old})
     if len(ids) != len(old):
-        print("同一个 ID 出现在多个波特率下，请一只一只改。")
+        print("The same ID shows up at several baud rates, please change them one at a time.")
         return 1
     if len(ids) > 1 and not a.all:
-        print(f"总线上有 {len(ids)} 只舵机 {ids}；整链改请加 --all。")
+        print(f"There are {len(ids)} servos on the bus {ids}; to change the whole chain add --all.")
         return 1
 
     idx = BAUDS.index(a.to)
@@ -65,16 +65,16 @@ def main():
     for b, i in todo:
         bus = Bus(a.port, b)
         try:
-            bus.w8(i, LOCK, 0)          # 解锁 EEPROM
+            bus.w8(i, LOCK, 0)          # unlock EEPROM
             time.sleep(0.02)
-            bus.w8(i, BAUD_ADDR, idx)   # 写波特率编号
+            bus.w8(i, BAUD_ADDR, idx)   # write the baud rate value
             time.sleep(0.05)
         finally:
             bus.close()
-        print(f"  ID {i}: {b} -> {a.to} 已写入")
+        print(f"  ID {i}: {b} -> {a.to} written")
 
-    # 新波特率下逐只校验并上锁（含之前已是目标波特率、上次没来得及上锁的）；
-    # 个别型号要重新上电才切换，给出提示
+    # At the new baud rate check and lock each servo (including ones already at the target rate that were not locked last time);
+    # some models only switch after a power cycle, so print a hint
     time.sleep(0.2)
     bus = Bus(a.port, a.to)
     bad = []
@@ -87,14 +87,14 @@ def main():
                 bus.w8(i, LOCK, 1)
                 time.sleep(0.02)
             v = bus.r8(i, BAUD_ADDR)
-            print(f"  ID {i}: {a.to} bps 应答正常，寄存器6={v}，锁={bus.r8(i, LOCK)}")
+            print(f"  ID {i}: {a.to} bps replies OK, register6={v}, lock={bus.r8(i, LOCK)}")
     finally:
         bus.close()
 
     if bad:
-        print(f"ID {bad} 在 {a.to} bps 下没应答：给舵机断电重上电后再运行一次本脚本（会自动补上锁）。")
+        print(f"ID {bad} did not reply at {a.to} bps: power cycle the servos and run this script again (it will lock them).")
         return 2
-    print("完成。")
+    print("Done.")
     return 0
 
 

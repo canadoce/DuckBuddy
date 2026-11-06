@@ -1,44 +1,44 @@
 # -*- coding: utf-8 -*-
-"""飞特 FT-SCS 总线协议最小实现（HLS 系列）。
+"""Minimal Feetech FT-SCS bus protocol (HLS series).
 
-内存表：http://doc.feetech.cn/#/f?q=250689e628d7
-注意 HLS 的表和 STS/SMS **不一样**，最坑的是 44 号地址：
-HLS 的 44 是「目标电流」= 电机最大运行电流，为 0 时舵机完全没有扭矩。
+Memory table: http://doc.feetech.cn/#/f?q=250689e628d7
+Note that the HLS table is **not the same** as STS/SMS. The worst trap is address 44:
+on HLS, 44 is "goal current" = the motor's maximum running current. At 0 the servo has no torque at all.
 """
 import time
 import serial
 
-# ---- 地址 ----------------------------------------------------------------
-ID_ADDR     = 5      # 1B, EEPROM 主ID
+# ---- addresses -----------------------------------------------------------
+ID_ADDR     = 5      # 1B, EEPROM main ID
 BAUD_ADDR   = 6      # 1B, EEPROM 0..7 = 1M/500k/250k/128k/115200/76800/57600/38400
-MIN_ANGLE   = 9      # 2B, EEPROM. 多圈绝对位置控制时与 MAX_ANGLE 都写 0
+MIN_ANGLE   = 9      # 2B, EEPROM. For multi-turn absolute position control write 0 here and in MAX_ANGLE
 MAX_ANGLE   = 11     # 2B, EEPROM
-PROT_CURR   = 28     # 2B, EEPROM 保护电流, 6.5mA/LSB
-MODE        = 33     # 1B, EEPROM 0=位置伺服 1=恒速 2=恒流 3=PWM开环
-TORQUE      = 40     # 1B 0=关 1=开 2=阻尼
-ACCEL       = 41     # 1B, 8.7 度/秒^2, 0=最大加速度
-GOAL_POS    = 42     # 2B, BIT15 为方向位
-GOAL_CURR   = 44     # 2B, 6.5mA/LSB —— 为 0 则电机无扭矩
-GOAL_SPEED  = 46     # 2B, 0.732RPM/LSB —— 为 0 表示停止运行
+PROT_CURR   = 28     # 2B, EEPROM protection current, 6.5mA/LSB
+MODE        = 33     # 1B, EEPROM 0=position servo 1=constant speed 2=constant current 3=PWM open loop
+TORQUE      = 40     # 1B 0=off 1=on 2=damping
+ACCEL       = 41     # 1B, 8.7 deg/s^2, 0=maximum acceleration
+GOAL_POS    = 42     # 2B, BIT15 is the direction bit
+GOAL_CURR   = 44     # 2B, 6.5mA/LSB -- at 0 the motor has no torque
+GOAL_SPEED  = 46     # 2B, 0.732RPM/LSB -- 0 means stop
 TORQUE_LIM  = 48     # 2B, 0.1%
-LOCK        = 55     # 1B 0=解锁(EEPROM 掉电保存) 1=上锁(EEPROM 掉电不保存)
-PRES_POS    = 56     # 2B, 只读, BIT15 为方向位
-PRES_VOLT   = 62     # 1B, 只读, 0.1V
-PRES_TEMP   = 63     # 1B, 只读, °C
-STATUS      = 65     # 1B, 只读, 位=1 表示对应异常
-PRES_CURR   = 69     # 2B, 只读, 6.5mA/LSB
+LOCK        = 55     # 1B 0=unlocked (EEPROM kept after power off) 1=locked (EEPROM not kept after power off)
+PRES_POS    = 56     # 2B, read only, BIT15 is the direction bit
+PRES_VOLT   = 62     # 1B, read only, 0.1V
+PRES_TEMP   = 63     # 1B, read only, °C
+STATUS      = 65     # 1B, read only, bit=1 means that fault is present
+PRES_CURR   = 69     # 2B, read only, 6.5mA/LSB
 
 BROADCAST = 0xFE
-CENTER    = 2048     # 单圈量程 0..4095 的中点
+CENTER    = 2048     # midpoint of the single-turn range 0..4095
 
 
 def smag(v):
-    """符号位+数值 -> 有符号整数。飞特用 BIT15 做方向位，不是二进制补码。"""
+    """Sign bit + magnitude -> signed integer. Feetech uses BIT15 as the direction bit, not two's complement."""
     return -(v & 0x7FFF) if v & 0x8000 else v
 
 
 def enc(v):
-    """有符号整数 -> 符号位+数值。"""
+    """Signed integer -> sign bit + magnitude."""
     return (0x8000 | abs(int(v))) if v < 0 else int(v)
 
 
@@ -74,7 +74,7 @@ class Bus:
     def write(self, sid, addr, data):
         return self._txrx(sid, 0x03, [addr] + list(data))
 
-    # ---- 便捷封装 --------------------------------------------------------
+    # ---- helpers --------------------------------------------------------
     def r8(self, sid, addr):
         d = self.read(sid, addr, 1)
         return None if d is None else d[0]
@@ -91,7 +91,7 @@ class Bus:
         return self.write(sid, addr, [v & 0xFF, (v >> 8) & 0xFF])
 
     def scan(self, lo=0, hi=253, tries=2):
-        """返回能给出合法 PING 应答的 ID 列表。"""
+        """Returns the list of IDs that give a valid PING reply."""
         out = []
         for sid in range(lo, hi + 1):
             for _ in range(tries):
