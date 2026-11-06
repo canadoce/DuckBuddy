@@ -1,0 +1,3 @@
+# Build and check output (exports, review GLB, snapshots, policy poses, scratch)
+tmp/
+__pycache__/
