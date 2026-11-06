@@ -1,4 +1,4 @@
-//! PDB IMU board (R2f): an LSM6DSV16X whose on-chip sensor fusion (SFLP) is served on the
+//! PDB IMU board (R2f, R3): an LSM6DSV16X whose on-chip sensor fusion (SFLP) is served on the
 //! servo bus as if it were one more Feetech servo, ID 200 — so the host reads orientation in
 //! the same `SYNC_READ` as the 15 joints. Protocol and register layout:
 //! `hardware/rev-a/electronics/imu_to_dxl-spec-feetech.md`; the host side is
@@ -12,6 +12,13 @@
 //!           a transmission, so the bus is driven only while this board is talking.
 //!           PA3 sits on the same net as U4's output, so every byte sent is heard back.
 //!   SPI1    PA5 SCK, PA6 MISO, PA7 MOSI, PA4 CS (R8 pull-up) → U2 LSM6DSV16X.
+//!   PA11    status LED (LED4 on R3, active high; not connected on R2f).
+//!   PC15    bus speed jumper (JP1 on R3), read once at start-up with the internal pull-up:
+//!           open = 500 kbit/s (DuckBuddy), closed to GND = 1 Mbit/s (an STS3215 bus at its
+//!           factory speed, as on Frankenduck). Floating on R2f, so R2f stays at 500 kbit/s.
+//!   PA0     battery voltage, ADC_IN0, through a 100 kΩ / 22 kΩ divider (R16/R17).
+//!   PB7     battery current, ADC_IN11, from the INA180A2 on the 2 mΩ shunt: 0.1 V per A (R3).
+//!           Both pins are not connected on R2f, so the power readings mean nothing there.
 //!
 //! The block served at 56 (15 bytes):
 //!   0..6   gyro x/y/z, i16 LE raw counts at ±500 dps
@@ -19,7 +26,10 @@
 //!          the first fusion output (the host's "not ready" convention)
 //!   12     sample counter, +1 per fusion output
 //!   13     flags: bit0 sensor configured, bit1 orientation valid
-//!   14     reserved, 0
+//!   14     battery voltage in 0.1 V (R3; see `proto::BLOCK_BATTERY`)
+//!
+//! The power readings are also served at 100 (6 bytes, `proto::POWER_ADDR`): battery mV,
+//! battery mA, 3.3 V supply mV, all u16 LE.
 
 #![no_std]
 #![no_main]
@@ -29,7 +39,8 @@ mod proto;
 use core::cell::Cell;
 
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::adc::{self, Adc, AdcChannel, SampleTime};
+use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::mode::Blocking;
 use embassy_stm32::spi::{self, Spi};
 use embassy_stm32::time::Hertz;
@@ -43,7 +54,7 @@ use embedded_io_async::{Read, Write};
 use panic_halt as _;
 use static_cell::StaticCell;
 
-use proto::{BLOCK_LEN, DIAG_LEN, MAX_FRAME, Parser, Slave};
+use proto::{Baud, BLOCK_LEN, DIAG_LEN, MAX_FRAME, POWER_LEN, Parser, Registers, Slave};
 
 bind_interrupts!(struct Irqs {
     USART2 => usart::BufferedInterruptHandler<peripherals::USART2>;
@@ -58,6 +69,10 @@ static BLOCK: Mutex<CriticalSectionRawMutex, Cell<[u8; BLOCK_LEN]>> =
 /// device ahead never answered, 4..6 replies sent, 6..8 frames parsed.
 static DIAG: Mutex<CriticalSectionRawMutex, Cell<[u8; DIAG_LEN]>> =
     Mutex::new(Cell::new([0; DIAG_LEN]));
+
+/// The power readings served at `proto::POWER_ADDR`. Written by the power task.
+static POWER: Mutex<CriticalSectionRawMutex, Cell<[u8; POWER_LEN]>> =
+    Mutex::new(Cell::new([0; POWER_LEN]));
 
 fn bump(slot: usize) {
     DIAG.lock(|d| {
@@ -163,16 +178,28 @@ impl Imu {
     }
 }
 
+/// Fusion outputs per status-LED toggle: 120 Hz / 60 = a 1 Hz heartbeat.
+const HEARTBEAT_SAMPLES: u8 = 60;
+
 /// Configure the sensor, then keep the block fresh: one update per fusion output.
-async fn imu_loop(mut imu: Imu, mut wdg: IndependentWatchdog<'static, peripherals::IWDG>) -> ! {
+///
+/// The status LED (PA11, LED4 on R3; not connected on R2f) shows the state: fast blink while
+/// the sensor does not answer, a 1 Hz heartbeat while fusion outputs arrive.
+async fn imu_loop(
+    mut imu: Imu,
+    mut led: Output<'static>,
+    mut wdg: IndependentWatchdog<'static, peripherals::IWDG>,
+) -> ! {
     let mut counter: u8 = 0;
     loop {
         wdg.pet();
         BLOCK.lock(|b| b.set([0; BLOCK_LEN]));
         if !imu.configure().await {
+            led.toggle();
             Timer::after_millis(50).await;
             continue;
         }
+        led.set_low();
         BLOCK.lock(|b| {
             let mut v = b.get();
             v[13] = FLAG_CONFIGURED;
@@ -206,6 +233,9 @@ async fn imu_loop(mut imu: Imu, mut wdg: IndependentWatchdog<'static, peripheral
                 let mut gyro = [0u8; 6];
                 imu.read(reg::OUTX_L_G, &mut gyro);
                 counter = counter.wrapping_add(1);
+                if quat.is_some() && counter % HEARTBEAT_SAMPLES == 0 {
+                    led.toggle();
+                }
                 let mut block = [0u8; BLOCK_LEN];
                 block[0..6].copy_from_slice(&gyro);
                 if let Some(q) = quat {
@@ -240,7 +270,7 @@ async fn drain(uart: &mut BufferedUart<'static>) {
 }
 
 #[embassy_executor::task]
-async fn bus_task(mut uart: BufferedUart<'static>) {
+async fn bus_task(mut uart: BufferedUart<'static>, baud: Baud) {
     let mut parser = Parser::new();
     let mut slave = Slave::new();
     let mut rx = [0u8; 64];
@@ -277,7 +307,11 @@ async fn bus_task(mut uart: BufferedUart<'static>) {
             let Some(frame) = parser.feed(b) else { continue };
             bump(FRAMES);
             let action = slave.on_frame(&frame);
-            let len = proto::reply(action, &BLOCK.lock(|c| c.get()), &DIAG.lock(|c| c.get()), &mut out);
+            let mut regs = Registers::new(baud);
+            regs.block = BLOCK.lock(|c| c.get());
+            regs.diag = DIAG.lock(|c| c.get());
+            regs.power = POWER.lock(|c| c.get());
+            let len = proto::reply(action, &regs, &mut out);
             if len > 0 {
                 bump(REPLIES);
                 let _ = uart.write_all(&out[..len]).await;
@@ -290,12 +324,65 @@ async fn bus_task(mut uart: BufferedUart<'static>) {
     }
 }
 
+// ── power readings ───────────────────────────────────────────────────────────
+
+/// Readings per second, and the smoothing: each new reading moves the served value 1/8 of
+/// the way, so a servo's current spike shows as a bump of about 80 ms, not a single sample.
+const POWER_PERIOD_MS: u64 = 10;
+const POWER_SMOOTHING_SHIFT: u32 = 3;
+
+/// A running average kept with 4 extra bits so small steps are not lost.
+#[derive(Default)]
+struct Smooth(Option<u32>);
+
+impl Smooth {
+    fn update(&mut self, raw: u16) -> u16 {
+        let x = (raw as u32) << 4;
+        let v = match self.0 {
+            None => x,
+            Some(v) => v + (x >> POWER_SMOOTHING_SHIFT) - (v >> POWER_SMOOTHING_SHIFT),
+        };
+        self.0 = Some(v);
+        ((v + 8) >> 4) as u16
+    }
+}
+
+#[embassy_executor::task]
+async fn power_task(
+    adc: embassy_stm32::Peri<'static, peripherals::ADC1>,
+    battery: embassy_stm32::Peri<'static, peripherals::PA0>,
+    current: embassy_stm32::Peri<'static, peripherals::PB7>,
+) {
+    // PCLK / 2 = 32 MHz (the converter's limit is 35 MHz); 16 conversions averaged in hardware
+    // per reading, the result still 12 bits.
+    let mut cfg = adc::AdcConfig::default();
+    cfg.clock = Some(adc::Clock::Sync { div: adc::CkModePclk::DIV2 });
+    cfg.averaging = Some(adc::Averaging::Samples16);
+    let mut adc = Adc::new_with_config(adc, cfg);
+    let mut vrefint = adc.enable_vrefint();
+    let vrefint_cal = vrefint.calibrated_value();
+    // The pins come out of reset in analog mode, which is what the ADC needs; nothing else
+    // touches them. Long sampling: the divider and the INA180 output both sit behind 100 nF.
+    let mut battery = battery.degrade_adc();
+    let mut current = current.degrade_adc();
+    let (mut sv, mut sb, mut sc) = (Smooth::default(), Smooth::default(), Smooth::default());
+    loop {
+        let v = sv.update(adc.blocking_read(&mut vrefint, SampleTime::CYCLES160_5));
+        let b = sb.update(adc.blocking_read(&mut battery, SampleTime::CYCLES160_5));
+        let c = sc.update(adc.blocking_read(&mut current, SampleTime::CYCLES160_5));
+        let supply = proto::supply_mv(v, vrefint_cal);
+        let bytes = proto::power_bytes(proto::battery_mv(b, supply), proto::current_ma(c, supply), supply);
+        POWER.lock(|p| p.set(bytes));
+        Timer::after_millis(POWER_PERIOD_MS).await;
+    }
+}
+
 // ── start-up ─────────────────────────────────────────────────────────────────
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // 64 MHz from HSI16 through the PLL (×8 ÷2). USART2 runs from PCLK, so 500 kbit/s is an
-    // exact divide by 128. Not for throughput: at 16 MHz the reply started ~60 µs later than a
+    // exact divide by 128 and 1 Mbit/s by 64. Not for throughput: at 16 MHz the reply started ~60 µs later than a
     // servo's, enough for the next servo in a SYNC_READ to talk over its end.
     let mut config = embassy_stm32::Config::default();
     {
@@ -317,8 +404,9 @@ async fn main(spawner: Spawner) {
 
     static TX: StaticCell<[u8; 64]> = StaticCell::new();
     static RX: StaticCell<[u8; 256]> = StaticCell::new();
+    let baud = read_baud_jumper(Input::new(p.PC15, Pull::Up));
     let mut ucfg = usart::Config::default();
-    ucfg.baudrate = proto_baud();
+    ucfg.baudrate = baud.bits_per_second();
     let uart = BufferedUart::new_with_de(
         p.USART2,
         p.PA3,
@@ -330,18 +418,29 @@ async fn main(spawner: Spawner) {
         ucfg,
     )
     .unwrap();
-    spawner.spawn(bus_task(uart).unwrap());
+    spawner.spawn(bus_task(uart, baud).unwrap());
+    spawner.spawn(power_task(p.ADC1, p.PA0, p.PB7).unwrap());
 
     let mut scfg = spi::Config::default();
     scfg.mode = spi::MODE_3;
     scfg.frequency = Hertz(4_000_000);
     let spi = Spi::new_blocking(p.SPI1, p.PA5, p.PA7, p.PA6, scfg);
     let cs = Output::new(p.PA4, Level::High, Speed::VeryHigh);
+    let led = Output::new(p.PA11, Level::Low, Speed::Low);
     // The sensor needs ~10 ms after power-up before it answers.
     Timer::after_millis(20).await;
-    imu_loop(Imu { spi, cs }, wdg).await
+    imu_loop(Imu { spi, cs }, led, wdg).await
 }
 
-const fn proto_baud() -> u32 {
-    500_000
+/// The bus speed set by the PC15 jumper: closed to GND = 1 Mbit/s, open = 500 kbit/s. The pin
+/// is released afterwards (dropping the input leaves it in analog mode), so a closed jumper
+/// draws no current while running.
+fn read_baud_jumper(pin: Input<'static>) -> Baud {
+    // Let the internal pull-up (~40 kΩ) charge the pad and trace: ~10 µs at 64 MHz.
+    cortex_m::asm::delay(640);
+    if pin.is_low() {
+        Baud::M1
+    } else {
+        Baud::K500
+    }
 }
