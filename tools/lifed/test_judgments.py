@@ -35,11 +35,11 @@ class UtteranceTest(unittest.TestCase):
         self.assertEqual(decide_utterance(ans(intent="rest", p_intent=0.6), named=False).action, "brain")
 
     def test_a_clear_command_counts_even_when_for_duck_runs_low(self):
-        # the real API, 2026-10-17: "拜拜我去忙了" for_duck 0.34, intent bye 1.00
+        # the real API, 2026-10-17 (said in Chinese): "bye, I'm off to work" for_duck 0.34, intent bye 1.00
         d = decide_utterance(ans(for_duck=0.15, intent="bye", p_intent=1.0), named=False)
         self.assertEqual((d.action, d.intent), ("command", "bye"))
         d = decide_utterance(ans(for_duck=0.09, intent="chat", p_intent=0.52, reply="none"), named=False)
-        self.assertEqual(d.action, "ignore", "妈我晚上不回来吃饭: for someone else")
+        self.assertEqual(d.action, "ignore", "\"Mum, I won't be home for dinner\": for someone else")
         d = decide_utterance(ans(for_duck=0.06, intent="bye", p_intent=0.9, reply="none"), named=False)
         self.assertEqual(d.action, "ignore", "... even when it reads like a goodbye (the robot, 10-17)")
         d = decide_utterance(ans(for_duck=0.06, intent="bye", p_intent=0.9, reply="none"), named=True)
@@ -65,7 +65,7 @@ class UtteranceTest(unittest.TestCase):
 
 class RecentTest(unittest.TestCase):
     def test_right_after_the_duck_spoke_a_misheard_answer_goes_to_the_brain(self):
-        # 2026-10-17, after a mission: "你真棒" heard as "嗯，周棒" (0.42, unclear), "50到" (0.29, unclear)
+        # 2026-10-17, after a mission: "you're great" (in Chinese) heard as two garbled lines (0.42, 0.29, unclear)
         for p_for in (0.42, 0.29):
             a = ans(for_duck=p_for, intent="unclear", p_intent=0.95, reply="none")
             self.assertEqual(decide_utterance(a, named=False, recent=True).action, "brain")

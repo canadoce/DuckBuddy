@@ -4,7 +4,7 @@
     python3 lifectl.py state                 # one snapshot
     python3 lifectl.py watch                 # live, twice a second
     python3 lifectl.py touch | call [yaw] | person [yaw] | sound [yaw]
-    python3 lifectl.py say 晚安              # words, through the local intent matcher
+    python3 lifectl.py say "good night"     # words, through the local intent matcher
     python3 lifectl.py cmd sleep|wake|rest|greet|quiet|unquiet
 
 yaw is in radians, + to the duck's left. From a PC: ssh orangepi@<ip> python3 ~/lifed/lifectl.py watch

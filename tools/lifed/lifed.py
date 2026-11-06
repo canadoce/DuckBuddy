@@ -50,7 +50,6 @@ BRAIN_RETRY_S = 60.0
 TOF_CENTRE = [r * 8 + c for r in range(2, 6) for c in range(2, 6)]
 LOOK_TIMEOUT_S = 8.0          # a photo up through frp and the 27B looking (0.6 s on the box)
 JEV_TIMEOUT_S = 1.2           # Jev answers in 0.3-0.5 s from here, 1.0 s on a cold connection (10-17)
-CN_DIGITS = "零一二三四五六七八九十"
 
 
 class Clock:
@@ -80,17 +79,8 @@ class Clock:
 
     @staticmethod
     def words(hour: int, minute: int) -> str:
-        """晚上十一点二十分 — the time as the brain should hear it."""
-        part = smallbrain.part_of_day(hour)
-        m = "" if minute < 5 else "半" if 25 <= minute < 35 else f"{Clock.num(minute)}分"
-        return f"{part}{smallbrain.hour_words(hour)}点{m}"
-
-    @staticmethod
-    def num(n: int) -> str:
-        if n < 10:
-            return "零" + CN_DIGITS[n]          # minutes: 十二点零五分
-        tens, ones = divmod(n, 10)
-        return ("" if tens == 1 else CN_DIGITS[tens]) + "十" + (CN_DIGITS[ones] if ones else "")
+        """'11:20 pm, in the evening' — the time as the brain should hear it."""
+        return f"{hour % 12 or 12}:{minute:02d} {'am' if hour < 12 else 'pm'}, {smallbrain.part_of_day(hour)}"
 
 
 class Volume:
@@ -642,10 +632,10 @@ class Lifed:
         return json.loads(buf.split(b"\n")[0]).get("result") or {}
 
     async def look(self, a: dict):
-        """"小白你看这是什么": a colour photo from the head camera to the brain (27B, multimodal, on the
+        """"Biscuit, what is this?": a colour photo from the head camera to the brain (27B, multimodal, on the
         V100 only), which answers about it. Offline, or with no photo, it says so in a person's words."""
         def clip(key, meaning):
-            self.events.append({"type": "reply", "emotion": "难过", "say": "", "pinyin": "", "pre": "coo",
+            self.events.append({"type": "reply", "emotion": "sad", "say": "", "pinyin": "", "pre": "coo",
                                 "gesture": "shake", "body": "none", "action": "none", "voice": key,
                                 "meaning": meaning, "via": "vision"})
         if time.monotonic() < self.brain_down_until:
@@ -714,8 +704,8 @@ class Lifed:
 
     async def voice(self, a: dict):
         """A clip in a person's voice (prompts.py) through the shared speaker; duck-speak if it is missing.
-        One at a time: a newer clip cuts the one playing (2026-10-17: the QR code read while "请把……二维码"
-        was still playing, and "我已经连着……" talked over it)."""
+        One at a time: a newer clip cuts the one playing (2026-10-17: the QR code was read while "please
+        hold ... the QR code" was still playing, and "I'm already on ..." talked over it)."""
         self.voice_seq += 1
         seq = self.voice_seq
         if a.get("delay_s", 0.0) > 0:
@@ -789,25 +779,25 @@ class Lifed:
         """What the duck is like right now, in a few words, for the brain."""
         b, inner = self.body, self.life.inner
         bits = []
-        post = {"standing": "站着", "walking": "在走路", "sitting": "坐着", "resting": "坐着休息",
-                "lying": "趴着", "rising": "正在起身", "fallen": "刚摔倒了"}.get(b.posture)
+        post = {"standing": "standing", "walking": "walking", "sitting": "sitting", "resting": "sitting and resting",
+                "lying": "lying down", "rising": "getting up", "fallen": "just fell over"}.get(b.posture)
         if post:
             bits.append(post)
         if self.life.state == "SLEEPING":
-            bits.append("在睡觉，迷迷糊糊的")
+            bits.append("asleep and drowsy")
         e = b.energy(b.leg_max_c)
         if e is not None and e < 0.35:
-            bits.append("腿有点累")
+            bits.append("legs a bit tired")
         if b.head_max_c is not None and b.head_max_c >= 62:
-            bits.append("头有点热")
+            bits.append("head a bit hot")
         if b.battery_pct is not None and b.battery_pct < 25:
-            bits.append("快没电了")
+            bits.append("battery almost empty")
         now = self.clock.now()
         if now is not None:
-            bits.append("现在是" + Clock.words(*now))
-        bits.append("心情很好" if inner.valence > 0.3 else "有点不开心" if inner.valence < -0.2
-                    else "有点无聊" if inner.arousal < 0.2 else "心情平静")
-        return "，".join(bits)
+            bits.append("the time is " + Clock.words(*now))
+        bits.append("in a very good mood" if inner.valence > 0.3 else "a little unhappy" if inner.valence < -0.2
+                    else "a little bored" if inner.arousal < 0.2 else "calm")
+        return ", ".join(bits)
 
     def mind(self) -> smallbrain.Mind:
         """The duck as the small brain needs it."""
@@ -874,7 +864,7 @@ class Lifed:
 
     def _small(self, text):
         reply = {**smallbrain.respond(text, self.mind(), self.rng, self.last_say, name=self.persona.name,
-                                      name_pinyin=self.persona.name_pinyin), "via": "small"}
+                                      name_syllables=self.persona.name_syllables), "via": "small"}
         log(f"small brain: {text!r} -> {json.dumps(reply, ensure_ascii=False)}")
         return reply
 

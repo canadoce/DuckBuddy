@@ -3,27 +3,28 @@
 
 When the online brain (tools/duckbrain, through frp) cannot be reached — outdoors with no hotspot,
 the V100 box down — the duck still answers what is said to it, in the same expression format the
-online brain returns (emotion, a few words of duck-speak with their pinyin, a call before them, a
-head gesture, a body move, an action, and a meaning line for the human). Duck-speak carries no
-words anyone understands, so what matters is the expression: an intent matched from keywords, and
-one of a few answers for it, coloured by how the duck is (asleep, tired, hot, hungry, happy).
+online brain returns (emotion, a few words of duck-speak with their syllables, a call before them,
+a head gesture, a body move, an action, and a meaning line for the human). Duck-speak carries no
+words anyone understands, so what matters is the expression: an intent matched from keywords
+(whole words, words.py), and one of a few answers for it, coloured by how the duck is (asleep,
+tired, hot, hungry, happy).
 
-Pure: no clocks, no IO. `respond(text, mind, rng)`; the pinyin of every line is pre-computed in
-`smallbrain_pinyin.py` (the robot has no pypinyin) — regenerate it after adding lines:
-
-    /data/microduck/tts/venv/bin/python tools/lifed/smallbrain.py --pinyin > tools/lifed/smallbrain_pinyin.py
+Pure: no clocks, no IO. `respond(text, mind, rng)`; the duck-speak syllables of each line are made
+from its English words by duckspeak.py (tools/persona), with no extra package on the robot.
 """
 from __future__ import annotations
 
+import os
 import random
 import re
 import sys
 from dataclasses import dataclass
 
-try:
-    from smallbrain_pinyin import PINYIN
-except ImportError:          # while generating it
-    PINYIN = {}
+import words
+
+# duck-speak from English text (tools/persona/duckspeak.py, ~/persona on the robot)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "persona"))
+import duckspeak  # noqa: E402
 
 
 @dataclass
@@ -47,181 +48,192 @@ def E(emotion, say, pre, gesture, body, meaning, action="none"):
 
 # intent: (keywords, answers). Earlier intents win, so the specific ones go first.
 INTENTS = [
-    ("sorry", ("对不起", "抱歉", "不好意思"), [
-        E("撒娇", "没关系～", "coo", "nuzzle", "lean_in", "没关系呀，我不生气啦。"),
-        E("开心", "嗯嗯！", "coo", "nod", "none", "好啦好啦，原谅你啦。"),
+    ("sorry", ("sorry", "i apologize", "my bad", "forgive me"), [
+        E("coy", "It's okay~", "coo", "nuzzle", "lean_in", "It's okay, I'm not upset."),
+        E("happy", "Mm-hm!", "coo", "nod", "none", "All right, all right, I forgive you."),
     ]),
-    ("thanks", ("谢谢", "多谢", "辛苦了"), [
-        E("害羞", "嘿嘿～", "coo", "tilt", "shrink", "不客气呀，能帮上忙我很开心。"),
-        E("开心", "不客气！", "chirp", "nod", "bounce", "不用谢！"),
+    ("thanks", ("thank you", "thanks", "thank", "many thanks"), [
+        E("shy", "Hehe~", "coo", "tilt", "shrink", "You're welcome. I'm happy I could help."),
+        E("happy", "You're welcome!", "chirp", "nod", "bounce", "No need to thank me!"),
     ]),
-    ("love", ("喜欢你", "爱你", "最喜欢", "想你"), [
-        E("害羞", "嘿嘿～", "coo", "nuzzle", "shrink", "我也最喜欢你啦，好害羞。"),
-        E("撒娇", "我也是！", "coo", "nuzzle", "lean_in", "我也喜欢你，要一直陪着我哦。"),
+    ("love", ("love you", "i like you", "like you", "miss you", "my favorite", "youre my favorite"), [
+        E("shy", "Hehe~", "coo", "nuzzle", "shrink", "You're my favorite too. I'm all shy now."),
+        E("coy", "Me too!", "coo", "nuzzle", "lean_in", "I like you too. Stay with me always, okay?"),
     ]),
-    ("praise", ("真棒", "好棒", "厉害", "聪明", "好乖", "真乖", "可爱", "好看", "漂亮", "不错"), [
-        E("开心", "嘎嘎！", "chirp", "nod", "bounce", "被夸啦，好开心！"),
-        E("害羞", "嘿嘿～", "coo", "tilt", "shrink", "哎呀，被你夸得有点不好意思。"),
-        E("开心", "哈哈哈哈", "chirp", "look_up", "bounce", "哈哈，我也觉得自己很棒！"),
+    ("praise", ("good boy", "good girl", "good duck", "well done", "good job", "great job", "clever", "smart", "cute",
+                "adorable", "so pretty", "beautiful", "amazing", "awesome", "youre great", "you are great",
+                "the best", "brilliant"), [
+        E("happy", "Quack quack!", "chirp", "nod", "bounce", "You said something nice about me, I'm so happy!"),
+        E("shy", "Hehe~", "coo", "tilt", "shrink", "Oh, all that praise makes me a little shy."),
+        E("happy", "Hahaha!", "chirp", "look_up", "bounce", "Haha, I think I'm pretty great too!"),
     ]),
-    ("scold", ("笨", "坏", "讨厌", "不乖", "烦", "闭嘴", "别吵", "吵死", "傻"), [
-        E("难过", "呜……", "coo", "droop", "shrink", "呜，你说我，我有点难过。"),
-        E("难过", "嘎……", "peck", "shake", "shrink", "哼，我才不笨呢……"),
-        E("撒娇", "不要嘛～", "peck", "shake", "none", "不要这样说我嘛。"),
+    ("scold", ("stupid", "dumb", "bad duck", "bad boy", "bad girl", "naughty", "hate you", "annoying", "shut up",
+               "be quiet", "idiot", "go away"), [
+        E("sad", "Aww...", "coo", "droop", "shrink", "Aww, you're telling me off. That makes me a little sad."),
+        E("sad", "Quack...", "peck", "shake", "shrink", "Hmph, I'm not stupid..."),
+        E("coy", "Don't~", "peck", "shake", "none", "Please don't talk to me like that."),
     ]),
-    ("hug", ("抱抱", "摸摸", "亲亲", "贴贴", "蹭蹭"), [
-        E("撒娇", "抱抱～", "coo", "nuzzle", "lean_in", "抱抱！我最喜欢贴着你了。"),
-        E("开心", "嘎～", "coo", "nuzzle", "none", "好舒服，再摸摸我嘛。"),
+    ("hug", ("hug", "hugs", "cuddle", "pet you", "kiss", "snuggle"), [
+        E("coy", "Hug~", "coo", "nuzzle", "lean_in", "A hug! I love being close to you."),
+        E("happy", "Quack~", "coo", "nuzzle", "none", "That feels so nice. Pet me some more."),
     ]),
-    ("comfort", ("难过", "伤心", "不开心", "好累", "我累", "烦死", "哭"), [
-        E("难过", "抱抱～", "coo", "nuzzle", "lean_in", "别难过，我陪着你，抱抱你。"),
-        E("撒娇", "不哭不哭～", "coo", "nuzzle", "lean_in", "不哭不哭，有我在呢。"),
+    ("comfort", ("im sad", "i am sad", "so sad", "feel sad", "feeling sad", "upset", "im tired", "i am tired",
+                 "so tired", "crying", "cry", "bad day", "feel bad", "feel down", "stressed"), [
+        E("sad", "Hug~", "coo", "nuzzle", "lean_in", "Don't be sad. I'm here with you. Here's a hug."),
+        E("coy", "There, there~", "coo", "nuzzle", "lean_in", "There, there. I'm right here."),
     ]),
-    ("joke", ("笑话", "笑一个", "好笑", "逗我", "哈哈"), [
-        E("开心", "哈哈哈哈", "chirp", "look_up", "bounce", "哈哈哈，你逗我我就想笑！"),
-        E("开心", "嘎嘎嘎嘎", "chirp", "nod", "bounce", "嘎嘎嘎，笑死我啦！"),
+    ("joke", ("joke", "make me laugh", "funny", "haha", "hahaha", "hahahaha", "lol", "laugh"), [
+        E("happy", "Hahaha!", "chirp", "look_up", "bounce", "Hahaha, you make me laugh!"),
+        E("happy", "Quack quack quack!", "chirp", "nod", "bounce", "Quack quack, that's so funny!"),
     ]),
-    ("sing", ("唱歌", "唱首歌", "唱一个", "来首歌"), [
-        E("开心", "啦啦啦～", "chirp", "nod", "bounce", "啦啦啦，我给你唱鸭子歌！"),
-        E("害羞", "嘎嘎嘎～", "coo", "tilt", "bounce", "我只会嘎嘎唱，你别笑我哦。"),
+    ("sing", ("sing", "song", "sing a song", "sing for me"), [
+        E("happy", "La la la~", "chirp", "nod", "bounce", "La la la, here's a duck song for you!"),
+        E("shy", "Quack quack quack~", "coo", "tilt", "bounce", "I can only sing quack, so don't laugh at me."),
     ]),
-    ("dance", ("跳舞", "跳个舞", "扭一扭", "陪我玩", "玩一会", "玩游戏"), [
-        E("开心", "好呀好呀！", "chirp", "nod", "bounce", "好呀好呀，我们一起玩！"),
-        E("开心", "嘎嘎！", "chirp", "look_up", "bounce", "太好啦，我最喜欢玩了！"),
+    ("dance", ("dance", "play with me", "lets play", "play a game", "wiggle"), [
+        E("happy", "Yay, yay!", "chirp", "nod", "bounce", "Yay, let's play together!"),
+        E("happy", "Quack quack!", "chirp", "look_up", "bounce", "Great, playing is my favorite!"),
     ]),
-    ("look", ("看我", "看这里", "看这边", "过来", "来这里"), [
-        E("好奇", "嗯？", "inquire", "look_up", "lean_in", "你叫我呀？我在看着你呢。"),
-        E("开心", "来啦！", "chirp", "nod", "lean_in", "我在这儿呢，看着你。"),
+    ("look", ("look at me", "look here", "over here", "come here", "come over"), [
+        E("curious", "Hmm?", "inquire", "look_up", "lean_in", "You called me? I'm looking at you."),
+        E("happy", "Coming!", "chirp", "nod", "lean_in", "I'm right here, looking at you."),
     ]),
-    ("nod", ("点头", "点点头", "同意吗", "对不对", "是不是"), [
-        E("开心", "嗯嗯！", "none", "nod", "none", "嗯嗯，对的对的！"),
+    ("nod", ("nod", "nod your head", "do you agree", "agree", "is that right", "am i right"), [
+        E("happy", "Mm-hm!", "none", "nod", "none", "Yes, yes, that's right!"),
     ]),
-    ("shake", ("摇头", "摇摇头"), [
-        E("撒娇", "不要～", "peck", "shake", "none", "不要不要～"),
+    ("shake", ("shake your head", "shake"), [
+        E("coy", "Nope~", "peck", "shake", "none", "No, no~"),
     ]),
-    ("who", ("你是谁", "你叫什么", "什么名字", "你是什么"), [
-        E("开心", "{name}！", "greet", "nod", "bounce", "我是{name}呀，一只小机器鸭子！"),
-        E("开心", "嘎嘎！{name}！", "greet", "look_up", "bounce", "我叫{name}，是你的小鸭子！"),
+    ("who", ("who are you", "whats your name", "what is your name", "your name", "what are you"), [
+        E("happy", "{name}!", "greet", "nod", "bounce", "I'm {name}, a little robot duck!"),
+        E("happy", "Quack quack! {name}!", "greet", "look_up", "bounce", "My name is {name}, and I'm your little duck!"),
     ]),
-    ("age", ("几岁", "多大", "生日", "哪里来", "住哪"), [
-        E("好奇", "嗯……", "inquire", "tilt", "none", "我也不知道我几岁，大概刚出生不久吧。"),
-        E("开心", "嘎？", "inquire", "tilt", "lean_in", "我就住在你家里呀。"),
+    ("age", ("how old", "birthday", "where are you from", "where do you live", "your age"), [
+        E("curious", "Hmm...", "inquire", "tilt", "none", "I don't know how old I am. I think I was born not long ago."),
+        E("happy", "Quack?", "inquire", "tilt", "lean_in", "I live right here in your home."),
     ]),
-    ("online", ("上网", "联网", "网络", "大脑", "断网"), [
-        E("难过", "连不上～", "coo", "droop", "shrink", "我现在连不上网，只能用小脑袋想事情。"),
+    ("online", ("internet", "online", "offline", "network", "your brain", "wifi"), [
+        E("sad", "Can't connect~", "coo", "droop", "shrink", "I can't get online right now, so I'm thinking with my little head."),
     ]),
-    ("weather", ("天气", "下雨", "冷不冷", "外面"), [
-        E("好奇", "嘎？", "inquire", "tilt", "none", "我不知道外面天气怎么样呢。"),
-        E("好奇", "不知道～", "inquire", "look_up", "none", "我看不到外面，你告诉我好不好？"),
+    ("weather", ("weather", "raining", "rain", "is it cold", "sunny", "outside"), [
+        E("curious", "Quack?", "inquire", "tilt", "none", "I don't know what the weather is like outside."),
+        E("curious", "Don't know~", "inquire", "look_up", "none", "I can't see outside. Will you tell me?"),
     ]),
-    ("bye", ("再见", "拜拜", "回头见", "晚安"), [
-        E("撒娇", "拜拜～", "coo", "nod", "none", "拜拜，早点回来陪我哦。"),
+    ("bye", ("bye", "goodbye", "see you later", "good night", "goodnight"), [
+        E("coy", "Bye bye~", "coo", "nod", "none", "Bye bye. Come back and play with me soon."),
     ]),
-    ("hello", ("你好", "哈喽", "嗨", "早上好", "早安", "下午好", "晚上好", "我回来了", "回来啦"), [
-        E("开心", "嘎嘎！", "greet", "nod", "bounce", "你好呀，见到你真开心！"),
-        E("开心", "你好呀！", "greet", "look_up", "bounce", "你来啦，我等你好久了！"),
+    ("hello", ("hello", "hi", "hey", "good morning", "good afternoon", "good evening", "howdy", "im back",
+               "i am back", "im home", "i am home"), [
+        E("happy", "Quack quack!", "greet", "nod", "bounce", "Hello! I'm so happy to see you!"),
+        E("happy", "Hello!", "greet", "look_up", "bounce", "You're here! I've been waiting for you!"),
     ]),
 ]
 
 # dynamic intents: their answer depends on the duck's state (handled in respond)
 DYNAMIC = [
-    ("tired", ("累不累", "累吗", "困不困", "困吗", "想睡", "休息够")),
-    ("hot", ("热不热", "热吗", "烫", "发烧")),
-    ("hungry", ("饿不饿", "饿吗", "饿了", "电量", "没电", "吃饭", "充电")),
-    ("time", ("几点", "时间", "现在什么时候")),
-    # asking after the duck: the sure phrases come before the keyword intents ("你好吗" is no hello),
-    # the loose ones after them ("今天天气怎么样" is about the weather)
-    ("how", ("你好吗", "还好吗", "开心吗", "心情", "怎么了", "咋了", "咋啦", "你在干嘛", "你干嘛呢")),
-    ("how", ("怎么样", "在干嘛", "干什么", "做什么", "干嘛呢")),
+    ("tired", ("are you tired", "you tired", "are you sleepy", "you sleepy", "want to sleep", "need a rest",
+               "need to rest", "rested enough", "enough rest")),
+    ("hot", ("are you hot", "you hot", "too hot", "feel hot", "overheating", "fever", "burning")),
+    ("hungry", ("are you hungry", "you hungry", "hungry", "battery", "charge", "charging", "eat", "food")),
+    ("time", ("what time", "the time", "time is it", "what hour")),
+    # asking after the duck: the sure phrases come before the keyword intents ("hi, how are you" is
+    # no hello), the loose ones after them ("how is the weather" is about the weather)
+    ("how", ("how are you", "are you okay", "are you ok", "you okay", "are you happy", "your mood", "whats wrong",
+             "what is wrong", "whats up", "what are you doing", "what you doing", "how do you feel",
+             "how are you feeling", "hows it going", "how is it going")),
+    ("how", ("how is it", "hows it", "up to", "doing")),
 ]
 
-CN_NUM = "零一二三四五六七八九十"
+HOUR_WORDS = ("twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven")
 
 
 def hour_words(h: int) -> str:
-    """12-hour clock in characters: 0 -> 十二, 13 -> 一, 14 -> 两, 10 -> 十, 11 -> 十一."""
-    n = h % 12 or 12
-    return "两" if n == 2 else CN_NUM[n] if n <= 10 else "十" + CN_NUM[n - 10]
+    """The 12-hour clock in words: 0 -> twelve, 13 -> one, 14 -> two, 10 -> ten, 11 -> eleven."""
+    return HOUR_WORDS[h % 12]
 
 
 def part_of_day(h: int) -> str:
-    return ("半夜" if h < 5 else "早上" if h < 11 else "中午" if h < 13 else "下午" if h < 18
-            else "晚上" if h < 23 else "半夜")
+    return ("at night" if h < 5 else "in the morning" if h < 11 else "around noon" if h < 13
+            else "in the afternoon" if h < 18 else "in the evening" if h < 23 else "at night")
 
 
 def _dynamic(name: str, m: Mind) -> list[dict]:
     if name == "tired":
         if m.energy is not None and m.energy < 0.35:
-            return [E("困", "有点累～", "coo", "droop", "shrink", "腿有点累了，想坐下歇一会儿。"),
-                    E("困", "唔……累", "coo", "droop", "none", "嗯……我有点累了。")]
-        return [E("开心", "不累！", "chirp", "shake", "bounce", "一点都不累，我还能玩！"),
-                E("开心", "嘎嘎！", "chirp", "nod", "bounce", "精神好着呢！")]
+            return [E("sleepy", "Bit tired~", "coo", "droop", "shrink", "My legs are a bit tired. I'd like to sit and rest."),
+                    E("sleepy", "Mm... tired", "coo", "droop", "none", "Mm... I'm a little tired.")]
+        return [E("happy", "Not tired!", "chirp", "shake", "bounce", "Not tired at all, I can still play!"),
+                E("happy", "Quack quack!", "chirp", "nod", "bounce", "I'm full of energy!")]
     if name == "hot":
         if m.head_hot:
-            return [E("难过", "好热～", "coo", "droop", "shrink", "我的头有点热，要歇一歇才行。")]
-        return [E("开心", "不热！", "chirp", "shake", "none", "不热呀，凉快着呢。")]
+            return [E("sad", "So hot~", "coo", "droop", "shrink", "My head is a bit hot. I need to rest a while.")]
+        return [E("happy", "Not hot!", "chirp", "shake", "none", "Not hot, I'm nice and cool.")]
     if name == "hungry":
         if m.battery_pct is not None and m.battery_pct < 25:
-            return [E("撒娇", "饿了～", "coo", "droop", "lean_in", "我快没电了，好饿，想充电。")]
-        return [E("开心", "不饿！", "chirp", "shake", "bounce", "电还够呢，不饿！")]
+            return [E("coy", "Hungry~", "coo", "droop", "lean_in", "My battery is almost empty. I'm so hungry, I want to charge.")]
+        return [E("happy", "Not hungry!", "chirp", "shake", "bounce", "I still have plenty of battery, not hungry!")]
     if name == "time":
         if m.hour is None:
-            return [E("好奇", "嗯？不知道～", "inquire", "tilt", "none", "我的钟还没对上，不知道现在几点。")]
+            return [E("curious", "Hmm? Don't know~", "inquire", "tilt", "none", "My clock isn't set yet, so I don't know the time.")]
         h = m.hour
-        half = "半" if 20 <= m.minute < 50 else ""
-        say = f"{hour_words(h)}点{half}！"
+        half = 20 <= m.minute < 50
+        said = f"half past {hour_words(h)}" if half else f"{hour_words(h)} o'clock"
         late = h >= 23 or h < 5
-        return [E("困" if late else "开心", say, "inquire" if late else "chirp", "nod", "none",
-                  f"现在是{part_of_day(h)}{hour_words(h)}点{'半' if half else ''}" + ("，好晚了，该睡觉啦。" if late else "。"))]
+        return [E("sleepy" if late else "happy", said[0].upper() + said[1:] + "!", "inquire" if late else "chirp",
+                  "nod", "none",
+                  f"It's {said} {part_of_day(h)}." + (" It's late, time for bed." if late else ""))]
     if name == "how":
         if m.asleep:
-            return [E("困", "唔……", "coo", "droop", "none", "我在睡觉呢，迷迷糊糊的……")]
+            return [E("sleepy", "Mm...", "coo", "droop", "none", "I'm sleeping... all drowsy...")]
         if m.energy is not None and m.energy < 0.35:
-            return [E("困", "有点累～", "coo", "droop", "none", "我有点累了，在歇着呢。")]
+            return [E("sleepy", "Bit tired~", "coo", "droop", "none", "I'm a bit tired, so I'm resting.")]
         if m.valence < -0.2:
-            return [E("难过", "嗯……", "coo", "droop", "shrink", "我有点不开心……")]
-        doing = {"sitting": "坐着发呆", "resting": "坐着休息", "walking": "在走路", "standing": "站着看你"}
-        d = doing.get(m.posture, "陪着你")
-        return [E("开心", "嘎嘎！", "chirp", "nod", "bounce", f"我很好呀，正{d}呢！"),
-                E("开心", "好着呢！", "chirp", "tilt", "bounce", f"挺开心的，我在{d}。")]
+            return [E("sad", "Mm...", "coo", "droop", "shrink", "I'm a little unhappy...")]
+        doing = {"sitting": "sitting and daydreaming", "resting": "sitting and resting", "walking": "walking around",
+                 "standing": "standing here watching you"}
+        d = doing.get(m.posture, "keeping you company")
+        return [E("happy", "Quack quack!", "chirp", "nod", "bounce", f"I'm great! I'm {d}!"),
+                E("happy", "Doing great!", "chirp", "tilt", "bounce", f"I'm happy. I'm {d}.")]
     return []
 
 
 GENERIC_QUESTION = [
-    E("好奇", "嗯？", "inquire", "tilt", "lean_in", "嗯？我没太听懂，你再说一遍好不好？"),
-    E("好奇", "嘎？", "inquire", "tilt", "none", "这个问题好难，我想不出来。"),
-    E("好奇", "不知道～", "inquire", "look_up", "none", "我也不知道呢。"),
+    E("curious", "Hmm?", "inquire", "tilt", "lean_in", "Hmm? I didn't quite get that. Can you say it again?"),
+    E("curious", "Quack?", "inquire", "tilt", "none", "That's a hard question. I can't work it out."),
+    E("curious", "Don't know~", "inquire", "look_up", "none", "I don't know either."),
 ]
 GENERIC_STATEMENT = [
-    E("开心", "嗯嗯！", "none", "nod", "none", "嗯嗯，我在听呢。"),
-    E("好奇", "嘎～", "coo", "tilt", "lean_in", "是吗？然后呢？"),
-    E("开心", "好呀！", "chirp", "nod", "none", "好呀。"),
+    E("happy", "Mm-hm!", "none", "nod", "none", "Mm-hm, I'm listening."),
+    E("curious", "Quack~", "coo", "tilt", "lean_in", "Really? And then what?"),
+    E("happy", "Okay!", "chirp", "nod", "none", "Okay."),
 ]
 ASLEEP = [
-    E("困", "唔……", "coo", "droop", "none", "我在睡觉呢……迷迷糊糊的。"),
-    E("困", "嗯……困", "coo", "none", "none", "好困呀，让我再睡一会儿。"),
+    E("sleepy", "Mm...", "coo", "droop", "none", "I'm sleeping... all drowsy."),
+    E("sleepy", "Mm... sleepy", "coo", "none", "none", "So sleepy. Let me sleep a little longer."),
 ]
-QUESTION_RE = re.compile(r"[吗呢么？?]\s*$|^(为什么|怎么|什么|哪|谁|多少)")
+QUESTION_RE = re.compile(r"\?\s*$|^(why|how|what|whats|where|when|who|which|whose|is|are|do|does|did|can|could|"
+                         r"will|would|should|have|has)\b", re.I)
 
 
 def match(text: str) -> str | None:
-    t = text.lower()
-    for name, words in DYNAMIC[:5]:            # the state questions first: "累不累" is no scolding
-        if any(w in t for w in words):
+    ws = words.words(text)
+    for name, phrases in DYNAMIC[:5]:          # the state questions first: "are you tired" is no comfort
+        if words.any_of(ws, phrases):
             return name
-    for name, words, _ in INTENTS:
-        if any(w in t for w in words):
+    for name, phrases, _ in INTENTS:
+        if words.any_of(ws, phrases):
             return name
-    for name, words in DYNAMIC[5:]:
-        if any(w in t for w in words):
+    for name, phrases in DYNAMIC[5:]:
+        if words.any_of(ws, phrases):
             return name
     return None
 
 
 def respond(text: str, mind: Mind, rng: random.Random | None = None, last_say: str = "",
-            name: str = "小白", name_pinyin: str = "xiao3 bai2") -> dict:
-    """The duck's answer to `text` as an expression, with `pinyin` and `intent`. Never fails. A line
-    with `{name}` in it says the duck's own (its persona's) name."""
+            name: str = "Biscuit", name_syllables: str = "") -> dict:
+    """The duck's answer to `text` as an expression, with `pinyin` (its duck-speak syllables) and
+    `intent`. Never fails. A line with `{name}` in it says the duck's own (its persona's) name, in
+    `name_syllables` (made from the name when empty)."""
     rng = rng or random.Random()
     intent = match(text)
     if mind.asleep and intent not in ("hug", "love", "bye", "how", "time"):
@@ -237,8 +249,8 @@ def respond(text: str, mind: Mind, rng: random.Random | None = None, last_say: s
     # how it feels colours the delivery a little: unhappy, no bouncing; low, a smaller call
     if mind.valence < -0.3 and e["body"] == "bounce":
         e["body"] = "none"
-    e["pinyin"] = PINYIN.get(e["say"], "").replace("{name}", name_pinyin)
     e["say"] = e["say"].replace("{name}", name)
+    e["pinyin"] = duckspeak.syllables(e["say"], {name: name_syllables} if name_syllables else None)
     e["meaning"] = e["meaning"].replace("{name}", name)
     e["intent"] = intent
     return e
@@ -255,16 +267,3 @@ def all_says() -> list[str]:
                     says |= {o["say"] for o in _dynamic(name, m)}
     says |= {o["say"] for o in _dynamic("time", Mind(hour=None))}
     return sorted(s for s in says if s)
-
-
-if __name__ == "__main__" and "--pinyin" in sys.argv:
-    from pypinyin import Style, lazy_pinyin
-    print("# -*- coding: utf-8 -*-")
-    print('"""Generated by `smallbrain.py --pinyin` (pypinyin, TONE3, neutral 5) — do not edit."""')
-    print("PINYIN = {")
-    for s in all_says():
-        # a line saying the duck's name keeps `{name}`; respond() puts the persona's pinyin there
-        p = " {name} ".join(" ".join(lazy_pinyin(part, style=Style.TONE3, neutral_tone_with_five=True))
-                            for part in s.split("{name}")).strip()
-        print(f"    {s!r}: {p!r},")
-    print("}")

@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mission import Mission, SimRobot, cn_number, distance_m, parse_route  # noqa: E402
+from mission import Mission, SimRobot, distance_m, en_number, parse_route  # noqa: E402
 
 
 def steps(text):
@@ -16,11 +16,14 @@ def steps(text):
 
 class NumbersTest(unittest.TestCase):
     def test_numbers_and_distances(self):
-        for s, want in (("一", 1), ("两", 2), ("十五", 15), ("九十", 90), ("一百八十", 180), ("零点五", 0.5),
-                        ("1.5", 1.5), ("半", 0.5), ("一点二", 1.2)):
-            self.assertEqual(cn_number(s), want, s)
-        for s, want in (("一米", 1.0), ("半米", 0.5), ("一米半", 1.5), ("五十厘米", 0.5), ("50cm", 0.5),
-                        ("0.5m", 0.5), ("两米", 2.0), ("三十公分", 0.3)):
+        for s, want in (("one", 1), ("two", 2), ("fifteen", 15), ("ninety", 90), ("one hundred eighty", 180),
+                        ("a hundred and eighty", 180), ("forty-five", 45), ("forty five", 45), ("zero point five", 0.5),
+                        ("1.5", 1.5), ("half", 0.5), ("half a", 0.5), ("a", 1), ("one point two", 1.2),
+                        ("one and a half", 1.5), ("2 and a half", 2.5)):
+            self.assertEqual(en_number(s), want, s)
+        for s, want in (("one meter", 1.0), ("half a meter", 0.5), ("a meter and a half", 1.5), ("fifty centimeters", 0.5),
+                        ("50cm", 0.5), ("0.5m", 0.5), ("0.5 m", 0.5), ("two metres", 2.0), ("thirty centimetres", 0.3),
+                        ("a meter", 1.0), ("one and a half meters", 1.5), ("1 meter", 1.0)):
             self.assertAlmostEqual(distance_m(s), want, msg=s)
 
 
@@ -28,26 +31,41 @@ class RouteTest(unittest.TestCase):
     def test_the_first_route(self):
         # the user, 2026-10-17 (the second walk forward after the turn, not a sidestep)
         want = [("walk", 1.0), ("turn", 90.0), ("walk", 0.5), ("sit", None)]
-        for text in ("往前走一米，再左转，再往前走半米，最后坐下", "先往前走1m然后左转再向前走0.5m最后坐下",
-                     "往前走一米，左转后向前走五十厘米，坐下。"):
+        for text in ("walk forward one meter, then turn left, then walk forward half a meter, and finally sit down",
+                     "first walk forward 1m then turn left and walk forward 0.5m and sit down",
+                     "Walk forward one meter, turn left and walk forward fifty centimeters, sit down.",
+                     "Go forward 1 meter. After that, turn left. Next, go ahead 0.5 m. Finally sit."):
             self.assertEqual(steps(text), want, text)
 
     def test_turns(self):
-        self.assertEqual(steps("向右转四十五度"), [("turn", -45.0)])
-        self.assertEqual(steps("转身"), [("turn", 180.0)])
-        self.assertEqual(steps("左转走半米"), [("turn", 90.0), ("walk", 0.5)])
+        self.assertEqual(steps("turn right forty five degrees"), [("turn", -45.0)])
+        self.assertEqual(steps("turn 90 degrees to the right"), [("turn", -90.0)])
+        self.assertEqual(steps("turn to the left"), [("turn", 90.0)])
+        self.assertEqual(steps("turn around"), [("turn", 180.0)])
+        self.assertEqual(steps("turn left and walk half a meter"), [("turn", 90.0), ("walk", 0.5)])
 
     def test_what_it_asks_about_rather_than_guess(self):
-        self.assertEqual(steps("往左走半米"), "turn_or_side", "turn and walk, or sidestep?")
-        self.assertEqual(steps("向左侧移半米"), "no_sidestep")
-        self.assertEqual(steps("往前走"), "how_far")
-        self.assertEqual(steps("往前走两米，再往前走两米"), "too_far")
-        self.assertEqual(steps("后退一米"), "too_far_back")
-        self.assertEqual(steps("后退二十厘米"), [("walk", -0.2)])
+        self.assertEqual(steps("go left half a meter"), "turn_or_side", "turn and walk, or sidestep?")
+        self.assertEqual(steps("walk to the right"), "turn_or_side")
+        self.assertEqual(steps("sidestep left half a meter"), "no_sidestep")
+        self.assertEqual(steps("step sideways a bit"), "no_sidestep")
+        self.assertEqual(steps("walk forward"), "how_far")
+        self.assertEqual(steps("walk forward two meters, then walk forward two meters"), "too_far")
+        self.assertEqual(steps("back up one meter"), "too_far_back")
+        self.assertEqual(steps("back up twenty centimeters"), [("walk", -0.2)])
+        self.assertEqual(steps("walk backwards 20 cm"), [("walk", -0.2)])
 
     def test_no_route(self):
-        for text in ("坐下", "我今天走了一万步", "你往前面看看", "走吧", "站起来", "你好呀"):
+        for text in ("sit down", "I walked ten thousand steps today", "look ahead", "I look forward to it",
+                     "let's go", "go ahead", "go right ahead and tell me", "stand up", "hello there",
+                     "turn your head left", "turn it up", "go to sleep", "stop", "stop walking forward",
+                     "don't walk forward one meter", "come here"):
             self.assertIsNone(parse_route(text), text)
+
+    def test_the_steps_are_said_in_english(self):
+        r = parse_route("walk forward one meter, turn right, back up 20 cm, turn around, sit down, stand up")
+        self.assertEqual([s.words() for s in r.steps], ["walk forward 1 m", "turn right 90°", "walk back 0.2 m",
+                                                        "turn around", "sit down", "stand up"])
 
 
 def run(m, robot, seconds, dt=0.1, obstacle=lambda t: None):
@@ -62,7 +80,7 @@ def run(m, robot, seconds, dt=0.1, obstacle=lambda t: None):
 
 
 class RunTest(unittest.TestCase):
-    def mission(self, text="往前走一米，再左转，再往前走半米，最后坐下"):
+    def mission(self, text="walk forward one meter, then turn left, then walk forward half a meter, and finally sit down"):
         r = parse_route(text)
         return Mission(text, r.steps)
 
@@ -89,7 +107,7 @@ class RunTest(unittest.TestCase):
             @property
             def odom(self):
                 return Pose(self.pose.x * 0.917, self.pose.y * 0.917, self.pose.yaw)
-        m = Mission("x", parse_route("往前走一米").steps, odom_scale=1 / 0.917)
+        m = Mission("x", parse_route("walk forward one meter").steps, odom_scale=1 / 0.917)
         robot = ShortOdom()
         m.start(0.0)
         t = 0.0
@@ -106,7 +124,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual((robot.pose.x, robot.pose.y), (0.0, 0.0))
 
     def test_an_obstacle_pauses_and_it_goes_on_after(self):
-        m, robot = self.mission("往前走一米"), SimRobot()
+        m, robot = self.mission("walk forward one meter"), SimRobot()
         m.start(0.0)
         events = run(m, robot, 30, obstacle=lambda t: 0.2 if 2.0 < t < 2.5 else None)
         self.assertIn(("paused", "obstacle"), events)
@@ -120,14 +138,14 @@ class RunTest(unittest.TestCase):
         self.assertAlmostEqual(robot.pose.x, 1.0, delta=0.15, msg="the same target, not a new metre")
 
     def test_a_robot_that_does_not_move_fails_the_step(self):
-        m, robot = self.mission("往前走半米"), SimRobot(scale=0.0)
+        m, robot = self.mission("walk forward half a meter"), SimRobot(scale=0.0)
         m.start(0.0)
         events = run(m, robot, 60)
         self.assertEqual((m.state, events[-1]), ("failed", ("failed", "timeout")))
         self.assertEqual(m.snapshot()["steps"][0]["status"], "failed")
 
     def test_no_odometry_pauses(self):
-        m = self.mission("往前走半米")
+        m = self.mission("walk forward half a meter")
         m.start(0.0)
         tk = m.tick(0.0, None, "standing")
         self.assertEqual((m.state, tk.events), ("paused", [("paused", "no odometry")]))

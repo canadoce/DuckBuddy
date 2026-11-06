@@ -3,63 +3,73 @@
 
 Everyday talk stays duck-speak. A few moments need instructions a person can follow, like
 connecting it to a phone's hotspot outdoors: for those it plays a clip in a human voice
-(edge-tts Xiaoxiao, the voice the user picked on 2026-10-09). The clips are recorded ahead of
-time with `render_prompts.py` and kept on the robot (~/lifed/voice/<key>.wav), so they work
-with no network. A missing clip falls back to the duck-speak line.
+(edge-tts, an English voice: render_prompts.py). The clips are recorded ahead of time with
+`render_prompts.py` and kept on the robot (~/lifed/voice/<key>.wav), so they work with no
+network. A missing clip falls back to the duck-speak line.
 
 Pure data: core.py estimates from the text how long the duck is deaf to itself.
 """
 
 PROMPTS = {
     # QR Wi-Fi provisioning (tools/visiond)
-    "scan_start": "请把 Wi-Fi 或手机热点的二维码，放在我脸前面二三十厘米，保持一两秒。不想连了，就说取消。",
-    "joining": "看到二维码了，正在连接，请稍等。",
-    "joined": "网络连好啦，谢谢你！",
-    "already": "我已经连着这个网络啦。",
-    "timeout": "没有看到二维码，我先不扫了。想再试，就叫我连网。",
-    "not_wifi": "这不是连网用的二维码，我先不扫了。请换成 Wi-Fi 或手机热点的分享二维码，再叫我连网。",
-    "not_found": "没找到这个热点，我先不连了。苹果手机请打开最大兼容性，先停在个人热点页面，"
-                 "叫我连网，等几秒，再切到二维码给我看。",
-    "failed": "没有连上，我先不连了。可能是密码不对，检查一下再叫我连网。",
-    "cancelled": "好的，不连了。",
+    "scan_start": "Please hold the QR code of your Wi-Fi or phone hotspot twenty to thirty centimeters in front "
+                  "of my face, and keep it still for a second or two. If you change your mind, say cancel.",
+    "joining": "I can see the QR code. Connecting now, please wait.",
+    "joined": "I'm on the network now. Thank you!",
+    "already": "I'm already on this network.",
+    "timeout": "I didn't see a QR code, so I stopped looking. To try again, ask me to connect to Wi-Fi.",
+    "not_wifi": "This QR code is not for a network, so I stopped looking. Please show me the share code of a "
+                "Wi-Fi network or a phone hotspot, then ask me to connect to Wi-Fi again.",
+    "not_found": "I can't find this hotspot, so I stopped. On an iPhone, turn on Maximize Compatibility and stay "
+                 "on the Personal Hotspot page. Ask me to connect to Wi-Fi, wait a few seconds, then switch to "
+                 "the QR code and show it to me.",
+    "failed": "I could not connect, so I stopped. The password may be wrong. Check it, then ask me to connect to "
+              "Wi-Fi again.",
+    "cancelled": "Okay, I won't connect.",
     # its phone page's address, read out (on a phone's hotspot you cannot know it): the intro, the
     # address digit by digit (DIGITS), the port
-    "addr_intro": "我的网页地址是：",
-    "addr_port": "冒号，八零八八。在手机浏览器里打开就行。",
-    "addr_none": "我现在还没有连上网络。",
+    "addr_intro": "My page address is:",
+    "addr_port": "colon, eight zero eight eight. Open it in your phone's browser.",
+    "addr_none": "I'm not connected to a network yet.",
     # look: what it sees is told by the brain on the V100; offline it cannot
-    "look_offline": "我现在没联网，看不懂这个。",
-    "look_failed": "我的眼睛现在看不了，等一下再试试。",
+    "look_offline": "I'm offline right now, so I can't tell what this is.",
+    "look_failed": "My eyes are not working right now. Try again in a moment.",
     # missions (mission.py): a spoken route, read back, done step by step
-    "mission_ready": "我准备好了，说开始我就出发。",
-    "mission_ready_dry": "我准备好了。这次是演练，我不会真的动，说开始就出发。",
-    "mission_done": "完成啦！",
-    "mission_failed": "这一步我没做到，先停下了。",
-    "mission_paused": "好，我停下了。说继续，我就接着走。",
-    "mission_obstacle": "前面有东西，我先停下了。",
-    "mission_cancelled": "好的，不走了。",
-    "ask_turn_or_side": "是转过去再走，还是横着走呀？",
-    "ask_how_far": "要走多远呀？",
-    "no_sidestep": "我还不会横着走。",
-    "too_far": "这段路太长了，我一次最多走三米。",
-    "too_far_back": "我看不见后面，最多只能后退三十厘米。",
-    "mission_need_stand": "我得先站起来，才能出发。",
+    "mission_ready": "I'm ready. Say start, and I will set off.",
+    "mission_ready_dry": "I'm ready. This is a dry run, so I won't really move. Say start, and I will set off.",
+    "mission_done": "All done!",
+    "mission_failed": "I could not do this step, so I stopped.",
+    "mission_paused": "Okay, I stopped. Say continue, and I will keep going.",
+    "mission_obstacle": "There is something in front of me, so I stopped.",
+    "mission_cancelled": "Okay, I won't go.",
+    "ask_turn_or_side": "Should I turn first and then walk, or walk sideways?",
+    "ask_how_far": "How far should I walk?",
+    "no_sidestep": "I can't walk sideways yet.",
+    "too_far": "That is too far. I can walk three meters at most.",
+    "too_far_back": "I can't see behind me, so I can back up thirty centimeters at most.",
+    "mission_need_stand": "I need to stand up before I can set off.",
 }
 
 # one clip per character of an address, put together by lifed
-DIGITS = {f"d{i}": c for i, c in enumerate("零一二三四五六七八九")} | {"dot": "点"}
-DIGIT_S = 0.42          # about how long each lasts, with its gap
-ADDRESS_S = 13.5        # intro + an address + the port: 12.9 s for <robot-ip>
-# Never its name in a clip (2026-10-17: "叫我小白，说连网" came back through its microphone, the name
-# cut the clip short as a call, and "连网" started another scan, again and again). The command words
-# are in some (they say what to do); core.py drops what it hears of its own clip.
+DIGITS = {f"d{i}": w for i, w in enumerate(("zero", "one", "two", "three", "four", "five", "six", "seven",
+                                            "eight", "nine"))} | {"dot": "dot"}
+# About how long each clip lasts, with its gap, and a whole address read out. English estimates
+# (the Chinese clips measured 0.42 s a digit and 12.9 s for a whole address): measure them again on
+# the rendered clips (lifed passes the real lengths of the recorded ones; these are the fallback).
+DIGIT_S = 0.5
+ADDRESS_S = 13.5
+# Never its name in a clip (2026-10-17: a clip that said its name came back through its microphone,
+# the name cut the clip short as a call, and the command word in it started another scan, again and
+# again). The command words are in some (they say what to do); core.py drops what it hears of its
+# own clip.
 
-CHARS_PER_S = 4.2      # Xiaoxiao at the default rate, measured on these clips
+# An estimate for an English voice at the default rate (about 160 words a minute); not measured on
+# these clips yet
+WORDS_PER_S = 2.7
 
 
 def seconds(key: str) -> float:
     """About how long a clip lasts (lifed passes the real lengths of the recorded clips)."""
     if key == "address":
         return ADDRESS_S
-    text = PROMPTS.get(key, "")
-    return sum(1 for c in text if not c.isspace()) / CHARS_PER_S
+    return len(PROMPTS.get(key, "").split()) / WORDS_PER_S

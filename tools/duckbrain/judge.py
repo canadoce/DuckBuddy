@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Jev judgments for Xiaobai: typed facts at the duck's decision points
+"""Jev judgments for the duck: typed facts at the duck's decision points
 (docs/project/duck-life-jev-framework-20261017-CN.md §3).
 
 Jev (TypeSafe's System One) answers atomic questions about a state with probabilities, no free
@@ -37,8 +37,9 @@ from persona import load as load_persona  # noqa: E402
 P = load_persona()
 NAME = P.name
 DUCK = P.description
-CAMERA = (f"`view` 是{NAME}头上摄像头拍的一帧，画面中心是它正前方，水平视场约 62 度，"
-          "离地约 20 厘米，所以人通常只拍到腿或者需要仰视。")
+CAMERA = (f"`view` is one frame from the camera on {NAME}'s head. The centre of the picture is straight ahead of"
+          " it, the horizontal field of view is about 62 degrees, and the camera is about 20 cm above the floor,"
+          " so people often show only as legs, or are seen from below.")
 
 
 class JudgeError(Exception):
@@ -64,41 +65,54 @@ def _utterance(state: dict) -> tuple[dict, dict]:
         "in_conversation": bool(state.get("in_conversation")),
         "duck_last_said": state.get("duck_last_said") or "",
         "duck_is": state.get("duck_is") or "",
-        "note": f"`text` 是语音识别的结果，可能听错字；`named` 表示这句话里叫了它的名字{NAME}。",
+        "note": f"`text` comes from speech recognition and may have misheard words; `named` means the"
+                f" sentence called it by its name, {NAME}.",
     }
     q = {
         "for_duck": {
             "type": "noul",
-            "instructions": f"`text` 是不是对{NAME}说的？",
+            "instructions": f"Is `text` said to {NAME}?",
             "criteria": {
-                "true": "叫它、问它、让它做事、回应它刚才说的 `duck_last_said`、夸它或说它",
-                "false": "对别人说的话、自言自语、电视或视频里的声音、识别出来没头没尾或不成句的乱码",
+                "true": "calls it, asks it something, asks it to do something, answers what it just said"
+                        " (`duck_last_said`), praises it or tells it off",
+                "false": "said to someone else, talking to oneself, sound from a TV or a video, or a recognition"
+                         " result that is cut off, makes no sense or is not a sentence",
             },
         },
         "intent": {
             "type": "choice",
-            "instructions": f"`text` 想让{NAME}做什么？",
+            "instructions": f"What does `text` want {NAME} to do?",
             "criteria": {
-                "sleep": _opt("让它睡觉", "只是问它困不困", ["睡觉吧", "该睡了", "晚安", f"去睡吧{NAME}"]),
-                "rest": _opt("让它休息、歇一会儿、趴着不动", "问它累不累", ["休息一下", "你去歇着吧", "歇会儿"]),
-                "sit": _opt("让它坐下", "", ["坐下", "坐好", "坐一会儿"]),
-                "stand": _opt("让它从坐着站起来", "让它醒来（它在睡觉时用 wake）", ["站起来", "起来站好"]),
-                "wake": _opt("叫醒正在睡觉或休息的它", "问它醒没醒", ["醒醒", "起床啦", "快起来"]),
-                "net": _opt("让它连网、扫二维码", "问它能不能上网", ["连网", "扫码连一下", "连这个热点"]),
-                "bye": _opt("道别、结束聊天、主人要离开", "", ["拜拜", "我去忙了", "不聊了", "回头见"]),
-                "chat": _opt("聊天、提问、夸它、说它、讲事情", "让它做上面那些动作", ["你在干嘛", "你真可爱", "今天好累"]),
-                "unclear": _opt("听不清在说什么，或是识别出来的乱码", "", ["申请吧", "あ好好", "嗯"]),
+                "sleep": _opt("go to sleep", "only asks whether it is sleepy",
+                              ["go to sleep", "time for bed", "good night", f"go to sleep, {NAME}"]),
+                "rest": _opt("rest, take a break, lie still", "asks whether it is tired",
+                             ["take a rest", "go and have a rest", "take a break"]),
+                "sit": _opt("sit down", "", ["sit down", "sit", "take a seat"]),
+                "stand": _opt("stand up from sitting", "wake up (use wake while it is asleep)",
+                              ["stand up", "get up and stand"]),
+                "wake": _opt("wake up while it is asleep or resting", "asks whether it is awake",
+                             ["wake up", "time to get up", "come on, get up"]),
+                "net": _opt("connect to a network, scan a QR code", "asks whether it can go online",
+                            ["connect to wifi", "scan this code", "join this hotspot"]),
+                "bye": _opt("say goodbye, end the chat, the owner is leaving", "",
+                            ["bye", "I'm off to work", "that's all for now", "see you later"]),
+                "chat": _opt("chat, ask a question, praise it, tell it off, tell it about something",
+                             "ask it to do one of the moves above",
+                             ["what are you doing", "you're so cute", "I'm so tired today"]),
+                "unclear": _opt("cannot tell what is said, or the recognition result is garbled", "",
+                                ["apply then", "the the of", "hmm"]),
             },
         },
         "reply": {
             "type": "choice",
-            "instructions": f"{NAME}需要怎样回应 `text`？",
+            "instructions": f"How does {NAME} need to respond to `text`?",
             "criteria": {
-                "none": _opt("不需要回应", "", ["嗯", "哦", "好的", "自言自语"]),
-                "simple": _opt("一句固定的话就能回：打招呼、夸奖、简单问候、谢谢、道歉",
-                               "需要想一想才能回的提问或聊天", ["你好呀", "真乖", "谢谢你", "早上好"]),
-                "think": _opt("需要动脑回应：提问、聊天、讲事情、问它的感受", "",
-                              ["你今天做了什么", "你喜欢下雨吗", "我今天好累啊"]),
+                "none": _opt("no answer needed", "", ["hmm", "oh", "okay", "talking to oneself"]),
+                "simple": _opt("a fixed line will do: a hello, praise, a simple greeting, thanks, sorry",
+                               "a question or chat that needs some thought",
+                               ["hello there", "good boy", "thank you", "good morning"]),
+                "think": _opt("needs some thought: a question, a chat, a story, asking how it feels", "",
+                              ["what did you do today", "do you like rain", "I'm so tired today"]),
             },
         },
     }
@@ -112,30 +126,31 @@ def _person(state: dict) -> tuple[dict, dict]:
     q = {
         "person": {
             "type": "noul",
-            "instructions": "`view` 里有没有真人？",
-            "criteria": {"true": "真人，哪怕只拍到腿、手或半张脸",
-                         "false": "没有人；或者只是照片、海报、玩偶、电视屏幕里的人"},
+            "instructions": "Is there a real person in `view`?",
+            "criteria": {"true": "a real person, even if only the legs, a hand or half a face show",
+                         "false": "nobody; or only a person in a photo, a poster, a doll or on a TV screen"},
         },
         "activity": {
             "type": "choice",
-            "instructions": f"`view` 里离{NAME}最近的那个人在做什么？",
+            "instructions": f"What is the person in `view` nearest to {NAME} doing?",
             "criteria": {
-                "looking_at_duck": _opt(f"看着{NAME}，或者朝它走过来", "背对着它或在看别处"),
-                "waving": _opt("朝它挥手、招手"),
-                "thumbs_up": _opt("朝它竖大拇指"),
-                "reaching": _opt("伸手要摸它或抱它"),
-                "passing": _opt("从旁边走过，没在看它"),
-                "busy": _opt("在做别的事（看手机、干活），没注意它"),
-                "unclear": _opt("看不清，或者画面里没有人"),
+                "looking_at_duck": _opt(f"looking at {NAME}, or walking toward it",
+                                        "has their back to it, or is looking somewhere else"),
+                "waving": _opt("waving at it, or beckoning it"),
+                "thumbs_up": _opt("giving it a thumbs up"),
+                "reaching": _opt("reaching out to touch it or pick it up"),
+                "passing": _opt("walking past, not looking at it"),
+                "busy": _opt("doing something else (looking at a phone, working), not paying attention to it"),
+                "unclear": _opt("cannot tell, or there is nobody in the picture"),
             },
         },
         "facing": {
             "type": "noul",
-            "instructions": f"离{NAME}最近的那个人的脸或身体是不是朝着摄像头？",
+            "instructions": f"Is the face or body of the person nearest to {NAME} turned toward the camera?",
         },
         "face": {
             "type": "box",
-            "instructions": "`view` 里离摄像头最近的那个人的脸；看不到脸就框住这个人",
+            "instructions": "the face of the person in `view` nearest to the camera; if no face shows, the whole person",
         },
     }
     return s, q
@@ -148,20 +163,21 @@ def _floor(state: dict) -> tuple[dict, dict]:
     q = {
         "floor": {
             "type": "choice",
-            "instructions": f"{NAME}脚下和正前方是什么地面？",
+            "instructions": f"What floor is under {NAME} and straight ahead of it?",
             "criteria": {
-                "carpet": _opt("地毯、绒面地垫"),
-                "smooth_hard": _opt("瓷砖、大理石、抛光水泥等光滑硬地"),
-                "wood": _opt("木地板"),
-                "mat_edge": _opt("地垫或地毯的边缘，前方地面会变"),
-                "outdoor": _opt("户外地面：路面、草地、砖地"),
-                "unclear": _opt("看不清地面"),
+                "carpet": _opt("carpet, a soft rug or mat"),
+                "smooth_hard": _opt("tiles, marble, polished concrete or another smooth hard floor"),
+                "wood": _opt("a wooden floor"),
+                "mat_edge": _opt("the edge of a mat or a rug: the floor ahead changes"),
+                "outdoor": _opt("ground outdoors: a road, grass, paving"),
+                "unclear": _opt("cannot see the floor clearly"),
             },
         },
         "path_clear": {
             "type": "noul",
-            "instructions": f"{NAME}正前方大约 1 米的地面上能走过去吗？",
-            "criteria": {"true": "平整、没有障碍", "false": "有障碍物、台阶、桌子或沙发边、电线、地面高低不平"},
+            "instructions": f"Can {NAME} walk over the floor about 1 meter straight ahead of it?",
+            "criteria": {"true": "flat, nothing in the way",
+                         "false": "something in the way, a step, the edge of a table or sofa, a cable, uneven ground"},
         },
     }
     return s, q
@@ -169,8 +185,9 @@ def _floor(state: dict) -> tuple[dict, dict]:
 
 def _presence(state: dict) -> tuple[dict, dict]:
     s = {"camera": CAMERA, "view": state["view"]}
-    q = {"anyone": {"type": "noul", "instructions": "`view` 里有没有人？",
-                    "criteria": {"true": "有真人，哪怕只看到一部分", "false": "没有人，或只有照片、电视里的人"}}}
+    q = {"anyone": {"type": "noul", "instructions": "Is there anyone in `view`?",
+                    "criteria": {"true": "a real person, even if only part of them shows",
+                                 "false": "nobody, or only people in photos or on a TV"}}}
     return s, q
 
 
