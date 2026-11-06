@@ -103,7 +103,7 @@ flowchart TB
 
 The 3S battery plugs into the XT60 of the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) in the head. The HAT measures the
 battery, fuses it, brings it down to 5 V for the Orange Pi, and feeds the servos the battery voltage
-on its two servo ports: one leg on each port, the head chain joined to one of them with a Y-cable. All
+on its two servo ports: the head servos and one leg in one daisy chain, the other leg on the other port. All
 15 servos share one bus on the Orange Pi's UART0. The HAT also does the sound (two microphones in, a
 speaker out) and has the Qwiic ports for the ToF in the face and the BNO055 IMU in the body.
 
@@ -135,9 +135,9 @@ flowchart LR
   PWR -- "5 V" --> OPI
   PWR -- "battery" --> PORTS
   OPI -- "UART0 · 500 kbps" --> PORTS
-  PORTS -- "port A · power + bus" --> LLEG
+  PORTS -- "port A · power + bus" --> HSERVO
+  HSERVO -- "daisy chain" --> LLEG
   PORTS -- "port B · power + bus" --> RLEG
-  PORTS -- "Y-cable" --> HSERVO
   OPI -- "I2S + I²C" --> CODEC
   OPI -- "I²C · Qwiic J8" --> TOF
   OPI -- "I²C · Qwiic J5" --> IMU
@@ -218,7 +218,6 @@ flowchart LR
 | Orange Pi Zero 3W | 1 | the 4 GB version recommended |
 | [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) | 1 | in the head, on the Orange Pi's 40-pin header; it takes the battery and feeds the servos. D5 swapped to an SMBJ15A for 3S |
 | BNO055 breakout (Adafruit 4646) | 1 | the body IMU, on the [LiPo plate](hardware/cad/lipo-plate/README.md), with a Qwiic cable (about 30 cm) to the HAT's J5 |
-| Servo Y-cable | 1 | joins the head chain to one of the HAT's servo ports |
 | IMX219 camera module | 1 | MIPI CSI, in the face |
 | 8×8 ToF module (VL53L5CX) | 1 | in the face |
 | Small speaker | 1 | on the HAT's amplifier (J1) |
