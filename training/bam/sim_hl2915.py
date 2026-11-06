@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""在 MuJoCo 里用 BAM 辨识出的 HL-2915 执行器回放策略 —— 复现 / 预测实机行为。
+"""Replay a policy in MuJoCo with the HL-2915 actuator identified by BAM - to reproduce / predict the real robot.
 
-和 `training/sim_walk.py` 用同一套观测 / 动作约定（直接 import 它），区别只在执行器：
-MJCF 里的 position 执行器换成 motor，每个物理步由 BAM 的 MujocoController 按
-"舵机内部 P 环 + 限流 + 反电动势 + 摩擦" 算力矩，Kp 用寄存器 50 的值（腿 / 头分开）。
+Uses the same observation / action conventions as `training/sim_walk.py` (it imports it); only the actuators differ:
+the position actuators in the MJCF become motors, and at each physics step BAM's MujocoController computes the torque from
+"servo inner P loop + current limit + back-EMF + friction", with Kp from register 50 (legs / head set apart).
 
-    # 需要 bam（better_actuator_models，与服务器同版本）在 PYTHONPATH 上
+    # needs bam (better_actuator_models, the same version as on the server) on PYTHONPATH
     python training/bam/sim_hl2915.py --params m4.json --policy policies/alpha_stand.onnx \
         --kp 32 --kp-head 32 --action-scale 1.0 --duration 6 --video kp32.mp4
-    python training/bam/sim_hl2915.py ... --position     # 对照：原版 XL330 position 执行器
+    python training/bam/sim_hl2915.py ... --position     # for comparison: the original XL330 position actuators
 
-指标里 `jitter` 是相邻两拍动作差的均方根（踢腿 / 抽搐时会很大），`lean` 是后 2/3 时段
-躯干俯仰均值（正 = 前倾）。
+In the metrics, `jitter` is the RMS of the action change between two ticks (large when the legs kick / twitch), `lean` is the
+mean trunk pitch over the last 2/3 of the run (positive = leaning forward).
 """
 import argparse
 import os
@@ -169,7 +169,7 @@ def run(a, scene, policy, cmd):
         for item in filter(None, a.kp_scale.split(",")):
             name, value = item.split("=")
             act.kp[sw.POLICY_JOINTS.index(name.strip())] *= float(value)
-        # 构造时会 mj_setConst，把 data 重置到 qpos0 —— 所以必须在摆好姿态之前建
+        # the constructor calls mj_setConst, which resets data to qpos0 - so it must be built before the pose is set
         ctrl = MujocoController(bam_model, sw.POLICY_JOINTS, model, data)
         if backlash is not None:
             # same as microduck_rl's BacklashEncoderBamActuator: only the P loop's position
@@ -239,7 +239,7 @@ def run(a, scene, policy, cmd):
         frames = []
         cam_yaw = None
 
-    # 先像 robotd init 那样用硬刚度在 home pose 站稳，再交给策略
+    # first stand still in the home pose with high stiffness, as robotd init does, then hand over to the policy
     if ctrl is not None and a.settle > 0:
         kp_run = act.kp.copy()
         act.kp = np.full_like(kp_run, a.settle_kp, dtype=float)
@@ -462,13 +462,13 @@ def caption_frame(frame, title, t, pitch, pushes, fell):
             _FONT = ImageFont.load_default()
     img = Image.fromarray(frame)
     d = ImageDraw.Draw(img)
-    lines = [title, f"t {t:4.1f} s   俯仰 {np.degrees(pitch):+5.1f}°"]
+    lines = [title, f"t {t:4.1f} s   pitch {np.degrees(pitch):+5.1f}°"]
     if pushes and t - pushes[-1][0] < 1.0:
         pt, vx, vy = pushes[-1]
-        lines.append(f"推 {np.hypot(vx, vy):.2f} m/s  " + {(1, 0): "向前", (-1, 0): "向后", (0, 1): "向左", (0, -1): "向右"}
-                     .get((int(np.sign(round(vx, 3))), int(np.sign(round(vy, 3)))), "斜向"))
+        lines.append(f"push {np.hypot(vx, vy):.2f} m/s  " + {(1, 0): "forward", (-1, 0): "back", (0, 1): "left", (0, -1): "right"}
+                     .get((int(np.sign(round(vx, 3))), int(np.sign(round(vy, 3)))), "diagonal"))
     if fell is not None:
-        lines.append(f"摔倒 @ {fell:.1f} s")
+        lines.append(f"fell @ {fell:.1f} s")
     y = 8
     for line in lines:
         d.text((10, y), line, font=_FONT, fill=(255, 255, 255), stroke_width=2, stroke_fill=(0, 0, 0))
@@ -486,15 +486,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--scene", default=os.path.join(ROOT, "hardware/rev-a/mjcf/scene_walk.xml"))
     ap.add_argument("--policy", default=os.path.join(ROOT, "policies/alpha_stand.onnx"))
-    ap.add_argument("--params", help="BAM params JSON（hl2915）")
-    ap.add_argument("--position", action="store_true", help="用 MJCF 自带的 position 执行器（原版对照）")
-    ap.add_argument("--kp", type=int, default=8, help="腿的寄存器 50")
-    ap.add_argument("--kp-head", type=int, default=16, help="颈 / 头的寄存器 50")
+    ap.add_argument("--params", help="BAM params JSON (hl2915)")
+    ap.add_argument("--position", action="store_true", help="use the MJCF's own position actuators (the original, for comparison)")
+    ap.add_argument("--kp", type=int, default=8, help="register 50 for the legs")
+    ap.add_argument("--kp-head", type=int, default=16, help="register 50 for the neck / head")
     ap.add_argument("--vin", type=float, default=12.0)
     ap.add_argument("--current-ma", type=float, default=1300.0)
-    ap.add_argument("--delay-ms", type=float, default=0.0, help="指令到执行器的纯延迟")
+    ap.add_argument("--delay-ms", type=float, default=0.0, help="pure delay from command to actuator")
     ap.add_argument("--timestep", type=float, default=0.001)
-    ap.add_argument("--settle", type=float, default=1.0, help="策略接管前用 --settle-kp 在 home pose 站稳的秒数")
+    ap.add_argument("--settle", type=float, default=1.0, help="seconds to stand still in the home pose with --settle-kp before the policy takes over")
     ap.add_argument("--settle-kp", type=int, default=32)
     ap.add_argument("--action-scale", type=float, default=1.0)
     ap.add_argument("--vx", type=float, default=0.0)
@@ -532,16 +532,16 @@ def main():
     ap.add_argument("--legs-lowpass", type=float, default=1.0, help="robotd target low-pass on the legs (1.0 = off)")
     a = ap.parse_args()
     if not a.position and not a.params:
-        ap.error("需要 --params，或用 --position")
+        ap.error("needs --params, or use --position")
 
     cmd = {"twist": [a.vx, 0.0, 0.0],
-           # robotd 的默认头部指令是 0（intents.rs），不是 home 角度
+           # robotd's default head command is 0 (intents.rs), not the home angles
            "head": [0.0, 0.0, 0.0, 0.0],
            "body": [0.0, 0.0, 0.0]}
     log = run(a, a.scene, a.policy, cmd)
     tail = slice(len(log["t"]) // 3, None)
     fell = "—" if log["fell"] is None else f"{log['fell']:.2f}s"
-    print(f"{a.label:<28} 摔倒 {fell:>6} | lean {np.degrees(log['pitch'][tail].mean()):+5.1f}° "
+    print(f"{a.label:<28} fell {fell:>6} | lean {np.degrees(log['pitch'][tail].mean()):+5.1f}° "
           f"(max {np.degrees(np.abs(log['pitch']).max()):4.1f}°) | roll rms {np.degrees(np.sqrt((log['roll'][tail]**2).mean())):4.1f}° "
           f"| z {log['z'][tail].mean():.3f} | jitter {log['jitter'][tail].mean():.3f} | |a|max {log['act'].max():.2f} "
           f"| τmax {log['tau'].max():.2f} N·m | Δx {log['x'][-1] - log['x'][0]:+.2f} m "

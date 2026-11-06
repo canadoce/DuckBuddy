@@ -2,9 +2,9 @@
 
 <p align="center"><b>An open-source embodied AI robot duck — it walks, hears, sees, and has a life of its own.</b></p>
 
-<p align="center">一只基于开源硬件、能走能跑，并逐步融合语音、视觉和自主行为的小型具身智能机器人。</p>
+<p align="center">A small embodied AI robot built on open hardware. It walks and runs, and step by step it adds voice, vision and behavior of its own.</p>
 
-<p align="center">🦆 <b>让 DuckBuddy 成为你真正的生活伙伴鸭。</b> <i>Your real-life buddy duck.</i></p>
+<p align="center">🦆 <b>Make DuckBuddy your real-life buddy duck.</b></p>
 
 <p align="center">
 <a href="https://github.com/Animan-AI/DuckBuddy/actions/workflows/ci.yml"><img src="https://github.com/Animan-AI/DuckBuddy/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -13,257 +13,255 @@
 <img src="https://img.shields.io/badge/servos-Feetech%20HL--2915-green" alt="Feetech HL-2915">
 </p>
 
-<p align="center">🌐 <a href="https://animan-ai.github.io/DuckBuddy/"><b>项目主页</b></a> · <a href="https://animan-ai.github.io/DuckBuddy/bom.html">物料清单</a> · <a href="https://animan-ai.github.io/DuckBuddy/assembly.html">组装说明</a> · <a href="https://animan-ai.github.io/DuckBuddy/tutorial.html">新手教程</a> · <a href="https://pan.baidu.com/s/1n_kGYn8liX8YniRDvvMkiA?pwd=nway">系统镜像</a>（提取码 nway）</p>
-
-<p align="center">中文 | <a href="README-EN.md">English</a></p>
+<p align="center">English (translated from the upstream Chinese README) | <a href="README-EN.md">Upstream English README</a></p>
 
 https://github.com/user-attachments/assets/7dd5c290-7b48-4f87-a991-7aab6c25632f
 
-<p align="center"><sub>用语音说一串指令，它连续完成几个动作（2026-10-17 实机录制，有声音，点开后取消静音）。</sub></p>
+<p align="center"><sub>A string of spoken instructions, done one move after another (recorded on the robot, 2026-10-17; it has sound, so unmute the player).</sub></p>
 
 <details>
-<summary>📱 在 GitHub App 里看不到视频？点这里看动图</summary>
+<summary>📱 No video in the GitHub app? Open the GIF</summary>
 
-<p align="center"><img src="docs/media/demo.gif" width="480" alt="演示动图（3 倍速）"></p>
+<p align="center"><img src="docs/media/demo.gif" width="480" alt="Demo GIF (3× speed)"></p>
 
-<p align="center"><sub>3 倍速动图，没有声音。完整视频：<a href="https://github.com/Animan-AI/DuckBuddy/raw/main/docs/media/demo.mp4">下载 demo.mp4</a>（5.7 MB），或用浏览器打开本页。</sub></p>
+<p align="center"><sub>3× speed, no sound. The full video: <a href="https://github.com/Animan-AI/DuckBuddy/raw/main/docs/media/demo.mp4">download demo.mp4</a> (5.7 MB), or open this page in a browser.</sub></p>
 
 </details>
 
-我们想做的不只是"又一只机器鸭"，而是把**运动、环境感知、语音交互和生命层**整合成一个**可复刻、可改进**的开源系统：全部跑在机器人自己身上，不依赖手机或云端。
+This is not just another robot duck. DuckBuddy brings **motion, perception, voice and a life layer** together in one open system that you can **build and improve**, and all of it runs on the robot itself, without a phone or the cloud.
 
-<sub>DuckBuddy 基于 [Pollen Robotics 的 Microduck](https://github.com/pollen-robotics/microduck)，是独立的社区项目，**不隶属于 Pollen Robotics，也未获其背书**，详见 [NOTICE](NOTICE)。</sub>
+<sub>DuckBuddy is built on [Pollen Robotics' Microduck](https://github.com/pollen-robotics/microduck). It is an independent community project, **not** affiliated with or endorsed by Pollen Robotics. See [NOTICE](NOTICE).</sub>
 
-## What makes DuckBuddy special? · 它特别在哪
+## What makes DuckBuddy special?
 
-- 🦆 **运动**：强化学习策略按我们的飞特 HL-2915 舵机重新训练，会走路、摔倒后站起、坐下/站起、前滚翻（仿真已训好）；50 Hz 控制，摔倒、过热、低电量、失联都会自动保护
-- 👂 **声音感知**：离线语音识别（SenseVoice），降噪和人声检测；头上两个麦克风判断声音从哪边来，叫它一声会转头看你
-- 👀 **视觉**：看人脸、注意到动的东西，自然地转头去看（实机验证中）；扫二维码连 WiFi；"看看这是什么"（联网时由多模态大模型回答）
-- 🧭 **自主行为**：说一串动作（"往前走两步，转个身，再坐下"），它拆成步骤连续执行；按说出的路线行走正在实机测试
-- 💗 **生命层**：有需求和情绪，会累、会休息，会管理舵机温度（头热了就少动）；用"鸭语"回应，而不是机器朗读；名字和性格写在一个人设文件里，换一份就是另一只鸭子
+- 🦆 **Motion**: reinforcement-learning policies retrained for our Feetech HL-2915 servos: walking, getting up after a fall, sitting down and standing up, a forward roll (trained in sim). A 50 Hz loop that guards against falls, heat, a flat battery and a lost link
+- 👂 **Hearing**: offline speech recognition (SenseVoice) with denoising and voice detection; two microphones in the head tell which side a voice came from, so it turns to look when you call it
+- 👀 **Vision**: notices faces and things that move and turns to look, naturally (being tested on the robot); joins Wi-Fi from a QR code; "what is this?" is answered by a multimodal model when online
+- 🧭 **Autonomy**: say a string of moves ("two steps forward, turn around, sit down") and it splits them into steps and does them in turn; walking a spoken route is being tested on the robot
+- 💗 **A life layer**: drives and moods; it gets tired, rests and manages its servo temperatures (a hot head moves less); it answers in duck-speak rather than a text-to-speech voice; its name and character live in one persona file, so swap the file and you have a different duck
 
-## Architecture · 系统架构
+## Architecture
 
-一张图看懂各部分怎么配合：**感知**（声音、视觉、距离）把事件交给**生命层** lifed，lifed 决定看哪里、做什么、说什么，再把意图交给唯一直接驱动舵机的 **robotd**；手柄的优先级高于 lifed；联网时，lifed 通过 frp 隧道向**大脑服务器**（多模态大模型）提问，离线时由自带的"小脑"回答。所有服务都在 Orange Pi 上独立运行，通过本机 Unix socket 交换 JSON 消息。
+One picture of how it fits together: **perception** (hearing, vision, distance) reports events to the **life layer**, `lifed`, which decides where to look, what to do and what to say, and hands its intents to **robotd**, the only process that drives the servos. The gamepad outranks `lifed`. Online, `lifed` asks a **brain server** (a multimodal LLM) through an frp tunnel; offline, its own small brain answers. Every service runs on its own on the Orange Pi, and they talk JSON over local Unix sockets.
 
-<p align="center"><img src="docs/media/arch-software-zh.png" width="900" alt="软件架构"></p>
+<p align="center"><img src="docs/media/arch-software-en.png" width="900" alt="Software architecture"></p>
 
 <details>
-<summary>开发者版：可编辑的 Mermaid 图</summary>
+<summary>For developers: the editable Mermaid diagram</summary>
 
 ```mermaid
 flowchart TB
-  subgraph ROBOT["机器人上 · Orange Pi（Linux）"]
-    subgraph SENSE["感知"]
-      VOICED["voiced · Python<br/>降噪 · VAD · SenseVoice 离线识别<br/>双麦听声辨向"]
-      VISIOND["visiond · Python + duckcam<br/>看脸 YuNet · 运动 · 扫码连网 · 拍照"]
-      TOFD["tofd · Rust<br/>8×8 测距"]
+  subgraph ROBOT["On the robot · Orange Pi (Linux)"]
+    subgraph SENSE["Senses"]
+      VOICED["voiced · Python<br/>denoise · VAD · SenseVoice offline ASR<br/>sound direction from two mics"]
+      VISIOND["visiond · Python + duckcam<br/>faces (YuNet) · motion · Wi-Fi QR · photos"]
+      TOFD["tofd · Rust<br/>8×8 ranging"]
     end
-    LIFED["lifed · Python · 生命层<br/>状态机 · 需求与情绪 · 注意力<br/>任务层 · 离线小脑 · 头部动作 · 人声提示"]
-    PERSONA[("人设 JSON<br/>名字 · 性格 · 声音")]
-    DUCKWEB["duckweb · Python<br/>手机网页 :8088"]
-    PADD["padd · Rust<br/>Xbox 手柄"]
-    ROBOTD["robotd · Rust · 50 Hz<br/>ONNX 策略：走 · 站起 · 坐下 · 滚翻<br/>安全：摔倒 · 温度 · 电池 · 失联停"]
+    LIFED["lifed · Python · the life layer<br/>states · drives and moods · attention<br/>missions · offline small brain · head · voice prompts"]
+    PERSONA[("persona JSON<br/>name · character · voice")]
+    DUCKWEB["duckweb · Python<br/>phone page :8088"]
+    PADD["padd · Rust<br/>Xbox pad"]
+    ROBOTD["robotd · Rust · 50 Hz<br/>ONNX policies: walk · stand up · sit · roll<br/>safety: falls · heat · battery · deadman"]
   end
-  HW["舵机 × 15 · IMU · 喇叭"]
-  BRAIN["duckbrain · GPU 服务器（可选）<br/>多模态大模型：对话 · 看图 · 判断"]
-  TRAIN["训练 · GPU<br/>mjlab · BAM 执行器辨识"]
+  HW["15 servos · IMU · speaker"]
+  BRAIN["duckbrain · GPU server (optional)<br/>multimodal LLM: talk · look · judge"]
+  TRAIN["Training · GPU<br/>mjlab · BAM actuator identification"]
 
-  VOICED -- "呼唤 / 说话（带方向）" --> LIFED
-  VISIOND -- "人脸 · 运动 · 二维码" --> LIFED
-  TOFD -- "前方距离" --> LIFED
-  TOFD -- "有人靠近" --> VISIOND
-  LIFED -- "看一会儿 · 扫码 · 拍照" --> VISIOND
+  VOICED -- "calls / speech (with direction)" --> LIFED
+  VISIOND -- "faces · motion · QR codes" --> LIFED
+  TOFD -- "distance ahead" --> LIFED
+  TOFD -- "someone close" --> VISIOND
+  LIFED -- "watch · scan · snap" --> VISIOND
   PERSONA -.-> VOICED
   PERSONA -.-> LIFED
-  DUCKWEB <-- "状态 · 音量 · 任务" --> LIFED
-  LIFED -- "JSON-RPC：走 · 动作 · 头 · 叫声 · 休息" --> ROBOTD
-  ROBOTD -- "姿态 · 温度 · 电量 · 里程计" --> LIFED
-  PADD -- "JSON-RPC：遥控" --> ROBOTD
-  ROBOTD -- "飞特总线 · 500 kbps" --> HW
-  LIFED <-. "frp 隧道：对话 · 看图" .-> BRAIN
+  DUCKWEB <-- "state · volume · missions" --> LIFED
+  LIFED -- "JSON-RPC: move · skills · head · sounds · rest" --> ROBOTD
+  ROBOTD -- "pose · temperatures · battery · odometry" --> LIFED
+  PADD -- "JSON-RPC: driving" --> ROBOTD
+  ROBOTD -- "Feetech bus · 500 kbps" --> HW
+  LIFED <-. "frp tunnel: talk · look" .-> BRAIN
   PERSONA -.-> BRAIN
-  TRAIN -. "ONNX 策略" .-> ROBOTD
+  TRAIN -. "ONNX policies" .-> ROBOTD
 ```
 
 </details>
 
-## Hardware & Software · 软硬件
+## Hardware & Software
 
-### 硬件一览
+### Hardware at a glance
 
-|  | Microduck 原版 | DuckBuddy |
+|  | Original Microduck | DuckBuddy |
 |---|---|---|
-| 主控 | Radxa Zero 3W（RK3566，1 GB） | **Orange Pi Zero 3W**（全志 A733：2×A76 + 6×A55，4 GB，3 TOPS NPU） |
-| 舵机 | 15 × Dynamixel XL330（2S） | 15 × **飞特 HL-2915**（3S）；HD-1910（2S）在做 |
-| 扩展板 | Pollen 的 HAT | 我们的 **HAT**（音频 codec、双麦、喇叭功放、ToF、5 V 电源、舵机总线）和 **PDB/IMU**（配电 + 挂在舵机总线上的 IMU） |
-| 传感器 | IMU | IMU、双麦克风、IMX219 摄像头、8×8 ToF 测距 |
-| 策略 | Pollen 的 | 按 HL-2915 **重新训练**，见 `training/` |
-| 行为 | 手柄或 App 控制 | 机器人上的**生命层**，见 `tools/lifed` |
+| Main board | Radxa Zero 3W (RK3566, 1 GB) | **Orange Pi Zero 3W** (Allwinner A733: 2×A76 + 6×A55, 4 GB, 3 TOPS NPU) |
+| Servos | 15 × Dynamixel XL330 (2S) | 15 × **Feetech HL-2915** (3S); HD-1910 (2S) on the way |
+| Carrier boards | Pollen's HAT | our **HAT** (audio codec, two microphones, speaker amp, ToF, 5 V supply, servo bus) and **PDB/IMU** (power distribution + an IMU on the servo bus) |
+| Sensors | IMU | IMU, two microphones, IMX219 camera, 8×8 ToF ranging |
+| Policies | Pollen's | **retrained for the HL-2915**, in `training/` |
+| Behavior | a gamepad or the app | a **life layer** on the robot, in `tools/lifed` |
 
-电池接在躯干里的 PDB/IMU 板上，分三路供电，每路都带电源和舵机总线：左腿、右腿、头部。HAT 和 Orange Pi 叠在一起装在头里：HAT 把电池电压降成 5 V 给 Orange Pi，把串口接到舵机总线上，并负责声音（两个麦克风进、一个喇叭出）。15 个舵机和 IMU 共用同一条总线。
+The battery plugs into the PDB/IMU board in the body, which splits it three ways: left leg, right leg, head. Each branch carries power and the servo bus. The HAT and the Orange Pi are stacked together in the head: the HAT brings the battery down to 5 V for the Orange Pi, connects its UART to the servo bus, and does the sound (two microphones in, a speaker out). The 15 servos and the IMU share one bus.
 
-<p align="center"><img src="docs/media/arch-hardware-zh.png" width="900" alt="硬件架构"></p>
+<p align="center"><img src="docs/media/arch-hardware-en.png" width="900" alt="Hardware architecture"></p>
 
 <details>
-<summary>开发者版：可编辑的 Mermaid 图</summary>
+<summary>For developers: the editable Mermaid diagram</summary>
 
 ```mermaid
 flowchart LR
-  BAT["电池 3S<br/>LiPo / LiHV"] --> PROT
-  subgraph PDB["PDB/IMU 板 · 躯干"]
-    PROT["TVS + 各路保险丝"]
-    IMU["IMU<br/>STM32G031 + LSM6DSV16X<br/>挂在总线上 · ID 200"]
+  BAT["Battery 3S<br/>LiPo / LiHV"] --> PROT
+  subgraph PDB["PDB/IMU board · body"]
+    PROT["TVS + branch fuses"]
+    IMU["IMU<br/>STM32G031 + LSM6DSV16X<br/>on the bus · ID 200"]
   end
-  PROT -- "J4 · 电源 + 总线" --> LLEG["左腿<br/>5 × HL-2915"]
-  PROT -- "J6 · 电源 + 总线" --> RLEG["右腿<br/>5 × HL-2915"]
+  PROT -- "J4 · power + bus" --> LLEG["Left leg<br/>5 × HL-2915"]
+  PROT -- "J6 · power + bus" --> RLEG["Right leg<br/>5 × HL-2915"]
   PROT --- IMU
-  PROT == "J5 ⇄ J2 · 电源 + 总线" ==> PWR
-  subgraph HEAD["头部"]
-    subgraph HAT["HAT 板"]
-      PWR["防反接 · 软启动<br/>5 V 降压 LMR51450"]
-      XCV["半双工总线收发"]
-      CODEC["音频 codec<br/>TLV320AIC3104"]
-      AMP["功放<br/>TPA2005D1"]
+  PROT == "J5 ⇄ J2 · power + bus" ==> PWR
+  subgraph HEAD["Head"]
+    subgraph HAT["HAT board"]
+      PWR["Reverse protection · soft start<br/>5 V buck LMR51450"]
+      XCV["Half-duplex bus transceiver"]
+      CODEC["Audio codec<br/>TLV320AIC3104"]
+      AMP["Amplifier<br/>TPA2005D1"]
     end
-    OPI["Orange Pi Zero 3W<br/>全志 A733 · 4 GB · NPU 3 TOPS"]
-    HSERVO["头部 5 × HL-2915<br/>脖子 · 头 · 嘴"]
-    MIC["麦克风 × 2<br/>左 / 右"]
-    SPK["喇叭"]
+    OPI["Orange Pi Zero 3W<br/>Allwinner A733 · 4 GB · 3 TOPS NPU"]
+    HSERVO["Head 5 × HL-2915<br/>neck · head · beak"]
+    MIC["Microphones × 2<br/>left / right"]
+    SPK["Speaker"]
     TOF["ToF 8×8<br/>VL53L5CX"]
-    CAM["摄像头<br/>IMX219"]
+    CAM["Camera<br/>IMX219"]
   end
   PWR -- "5 V" --> OPI
   OPI -- "UART7 · 500 kbps" --> XCV
-  XCV -- "舵机总线" --> HSERVO
-  XCV -. "总线数据 · 经 J2/J5" .-> PROT
+  XCV -- "servo bus" --> HSERVO
+  XCV -. "bus data · via J2/J5" .-> PROT
   OPI -- "I2S" --> CODEC
   OPI -- "I²C" --> CODEC
   OPI -- "I²C" --> TOF
   CAM -- "MIPI CSI" --> OPI
   MIC --> CODEC
   CODEC --> AMP --> SPK
-  OPI -. "Wi-Fi / 蓝牙" .-> EXT["手机网页 · Xbox 手柄<br/>大脑服务器（可选）"]
+  OPI -. "Wi-Fi / Bluetooth" .-> EXT["Phone page · Xbox pad<br/>brain server (optional)"]
 ```
 
 </details>
 
-我们自己设计的两块板，HAT 和 PDB/IMU：
+Our own two boards, the HAT and the PDB/IMU:
 
-<p align="center"><img src="docs/media/boards-zh.png" width="900" alt="HAT + PDB/IMU 的设计亮点"></p>
+<p align="center"><img src="docs/media/boards-en.png" width="900" alt="What is new in the HAT and the PDB/IMU"></p>
 
-### 软件栈
+### Software stack
 
-| 服务 | 语言 | 做什么 |
+| Service | Language | What it does |
 |---|---|---|
-| `robotd` | Rust | 50 Hz 控制环，跑 ONNX 策略；飞特 HLS 总线驱动、电池识别（2S/3S、LiPo/LiHV）、温度和摔倒保护 |
-| `lifed` | Python | 生命层：状态机、需求与情绪、注意力、任务层、离线小脑、头部动作 |
-| `voiced` | Python | 降噪、人声检测、离线识别（SenseVoice）、双麦听声辨向 |
-| `visiond` | Python | 摄像头：人脸（YuNet）、运动检测、扫码连网、拍照 |
-| `tofd` | Rust | 8×8 ToF 测距：前方距离、有人靠近 |
-| `padd` | Rust | Xbox 手柄（蓝牙），优先级高于 lifed |
-| `duckweb` | Python | 手机网页：状态、电量、对话、音量 |
-| `duckbrain` | Python | 可选，跑在 GPU 服务器上：任何兼容 OpenAI 接口的多模态大模型，负责聊天和看图 |
-| `persona` | JSON | 人设：名字、性格、说话方式，和代码分开 |
+| `robotd` | Rust | the 50 Hz control loop running ONNX policies; Feetech HLS bus driver, battery identification (2S/3S, LiPo/LiHV), heat and fall guards |
+| `lifed` | Python | the life layer: state machine, drives and moods, attention, missions, an offline small brain, head motion |
+| `voiced` | Python | denoising, voice detection, offline recognition (SenseVoice), sound direction from two microphones |
+| `visiond` | Python | the camera: faces (YuNet), motion detection, Wi-Fi by QR code, snapshots |
+| `tofd` | Rust | 8×8 ToF ranging: distance ahead, someone close |
+| `padd` | Rust | Xbox gamepad over Bluetooth; outranks `lifed` |
+| `duckweb` | Python | a phone page: state, battery, conversation, volume |
+| `duckbrain` | Python | optional, on a GPU server: any OpenAI-compatible multimodal LLM, for conversation and looking at pictures |
+| `persona` | JSON | the persona: name, character, how it talks, kept apart from the code |
 
-### 已验证的平台
+### Verified platforms
 
-| 组合 | 状态 |
+| Combination | Status |
 |---|---|
-| Orange Pi Zero 3W 4 GB + 15 × HL-2915 + 3S 电池（LiPo 1500 mAh / LiHV 2800 mAh） | ✅ 整机日常运行 |
-| Orange Pi Zero 3W + 15 × HD-1910 + 2S 电池 | 🚧 板子在焊，舵机驱动和策略待做 |
-| Microduck 原版（Radxa Zero 3W + Dynamixel XL330） | ⚪ Dynamixel 总线驱动未改动，我们没有实机测过 |
+| Orange Pi Zero 3W 4 GB + 15 × HL-2915 + 3S battery (LiPo 1500 mAh / LiHV 2800 mAh) | ✅ whole robot in daily use |
+| Orange Pi Zero 3W + 15 × HD-1910 + 2S battery | 🚧 boards being assembled; servo driver and policies to do |
+| Original Microduck (Radxa Zero 3W + Dynamixel XL330) | ⚪ the Dynamixel bus driver is unchanged; not tested by us on a real robot |
 
-### 开发进度
+### Progress
 
-| 时间 | 完成的事 |
+| When | Done |
 |---|---|
-| 2026-08 | 基于 Microduck 起步，整理原版硬件和软件 |
-| 2026-09 | 设计 HAT（R3E）和 PDB/IMU（R2f），打板、焊接 |
-| 2026-10 上旬 | 飞特 HL-2915 舵机驱动、IMU 固件；执行器辨识（BAM），重新训练走路、站起、坐下策略 |
-| 10-13 | Xbox 手柄（蓝牙） |
-| 10-14 | 生命层：需求、情绪、休息、舵机散热预算 |
-| 10-15 ~ 16 | 语音：离线识别、用鸭语表达、联网大脑对话 |
-| 10-17 | 扫二维码连 WiFi、人声提示、音量、"看看这是什么"、任务层（说一串动作连续执行）、里程计标定 |
-| 10-18 | 双麦听声辨向、注意力与视觉引导（人脸、运动）、电池自动识别（2S/3S、LiPo/LiHV）、人设与框架分离、开源 |
+| 2026-08 | Started from Microduck; sorted out the original hardware and software |
+| 2026-09 | Designed the HAT (R3E) and PDB/IMU (R2f) boards; fabricated and assembled |
+| early 2026-10 | Feetech HL-2915 servo driver, IMU firmware; actuator identification (BAM); walk, stand-up and sit-down policies retrained |
+| 10-13 | Xbox gamepad over Bluetooth |
+| 10-14 | The life layer: drives, moods, rest, servo heat budget |
+| 10-15 – 16 | Voice: offline recognition, duck-speak replies, conversation with the online brain |
+| 10-17 | Wi-Fi by QR code, voice prompts, volume, "what is this?", missions (a spoken string of moves done in turn), odometry calibration |
+| 10-18 | Sound direction from two microphones, attention with vision guidance (faces, motion), automatic battery identification (2S/3S, LiPo/LiHV), persona apart from the framework, open source |
 
-| 方向 | 内容 | 状态 |
+| Area | What | Status |
 |---|---|---|
-| 新技能 | 前滚翻、叼起地上的衣服（仿真里已训练好，待实机测试） | 🚧 进行中 |
-| 注意力 | 视觉引导转头的实机验证 | 🚧 进行中 |
-| 任务 | 实机按说出的路线行走 | 🚧 进行中 |
-| 2S 版 | HD-1910 舵机 + 2S 电池 | 🚧 进行中 |
-| NPU | 物体检测，接进注意力 | 📋 计划 |
-| 端侧多模态 | MiniCPM-V 4.7 1B，离线也能"看"东西 | 📋 计划 |
-| 定位 | AprilTag 地标 → 视觉里程计 → 房间级地图 | 📋 计划 |
-| 语音 | 唤醒词、嘈杂环境、双麦波束 | 📋 计划 |
-| 文档 | 英文翻译、完整装机教程 | 📋 计划 |
+| New skills | Forward roll, picking a cloth up from the floor (trained in sim, robot test next) | 🚧 in progress |
+| Attention | Vision-guided head turning, tested on the robot | 🚧 in progress |
+| Missions | Walking a spoken route on the robot | 🚧 in progress |
+| 2S version | HD-1910 servos + 2S battery | 🚧 in progress |
+| NPU | Object detection, fed into the attention | 📋 planned |
+| On-device multimodal model | MiniCPM-V 4.7 1B, so it can "see" things offline too | 📋 planned |
+| Localization | AprilTag landmarks → visual odometry → a room-level map | 📋 planned |
+| Voice | Wake word, noisy rooms, two-mic beamforming | 📋 planned |
+| Docs | English translations, a full build guide | 📋 planned |
 
-## Build Your Own DuckBuddy · 做一只你自己的鸭子
+## Build Your Own DuckBuddy
 
-| 步骤 | 资料 | 状态 |
+| Step | Where | Status |
 |---|---|---|
-| 1. 准备零件 | 见下方零件清单 | ✅ 清单 · 🚧 购买链接整理中 |
-| 2. 3D 打印 | [hardware/print](hardware/print/README.md)：拓竹工程 `DuckBuddy.3mf`，6 个打印盘，PETG + TPU，参数已设好 | ✅ |
-| 3. 扩展板 | 接口（引脚、电源、总线）：[docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md)。PCB 设计文件不公开；可以向维护者购买焊好的板（进群联系），也可以按接口自己设计 | ✅ 接口 |
-| 4. 烧录 IMU 固件 | [firmware/imu-feetech](firmware/imu-feetech/README.md)：ST-Link 接 PDB 的 J2，`probe-rs` 一条命令烧录 | ✅ |
-| 5. 装主控系统和服务 | 服务配置见 [deploy/opi-dev](deploy/opi-dev/README.md)、机器人配置见 [deploy/robots](deploy/robots) | 🚧 一键安装脚本整理中 |
-| 6. 舵机、零位、整机测试 | [tools/bringup](tools/bringup/README.md)：电脑上开的网页工作台——舵机 ID、关节映射、零位标定、IMU 固件、整机自检，每页带图文教程 | ✅ |
-| 7. 策略 | 训练好的策略在仓库里，可以直接用；自己训练见 [training](training) | ✅ |
-| 8. 给它一个性格 | [tools/persona](tools/persona/README.md)：照着示例鸭子写你自己的人设 JSON | ✅ |
-| 9. 组装教程、常见问题 | 下方先列了常见问题；图文组装教程整理中 | 🚧 |
+| 1. Get the parts | the parts list below | ✅ list · 🚧 shop links coming |
+| 2. 3D print | [hardware/print](hardware/print/README.md): Bambu Studio project `DuckBuddy.3mf`, 6 plates, PETG + TPU, settings included. Optional open development head for the Robot HAT E1: [hardware/cad/open-head](hardware/cad/open-head/README.md); optional LiPo plate with the BNO055 mount: [hardware/cad/lipo-plate](hardware/cad/lipo-plate/README.md) | ✅ |
+| 3. Carrier boards | interfaces (pinouts, power, bus): [docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md). The PCB design files are not public; you can buy assembled boards from the maintainer (contact them in the group chat), or design your own to the interface. An open PDB/IMU R3 board (not yet fabricated) is in [hardware/pcb/pdb-imu](hardware/pcb/pdb-imu/README.md) | ✅ interface |
+| 4. Flash the IMU firmware | [firmware/imu-feetech](firmware/imu-feetech/README.md): ST-Link on the PDB's J2, one `probe-rs` command | ✅ |
+| 5. Set up the Orange Pi system and services | service configs in [deploy/opi-dev](deploy/opi-dev/README.md), robot configs in [deploy/robots](deploy/robots) | 🚧 one-step installer coming |
+| 6. Servos, zero pose, whole-robot test | [tools/bringup](tools/bringup/README.md): a web workbench you open on your computer: servo IDs, joint mapping, zero calibration, IMU firmware, whole-robot self-test, each page with an illustrated guide. New servos can also be set up on a Raspberry Pi test bench with the Robot HAT E1 instead of the Feetech USB board (`--bench`) | ✅ |
+| 7. Policies | trained policies ship in the repo and can be used as they are; to train your own see [training](training) | ✅ |
+| 8. Give it a character | [tools/persona](tools/persona/README.md): write your own persona JSON after the example duck | ✅ |
+| 9. Assembly guide, FAQ | a short FAQ below; an illustrated assembly guide is coming | 🚧 |
 
-### 零件清单
+### Parts list
 
-| 零件 | 数量 | 说明 |
+| Part | Qty | Notes |
 |---|---|---|
-| 飞特 HL-2915 舵机 | 15 | 3S 版；腿 2 × 5，头部 5（脖子、头、嘴）。原版打印件直接装，M2×6 自攻螺丝 |
-| Orange Pi Zero 3W | 1 | 建议 4 GB 版本 |
-| HAT 扩展板 | 1 | 装在头里，和 Orange Pi 叠装 |
-| PDB/IMU 板 | 1 | 装在躯干里 |
-| IMX219 摄像头模组 | 1 | MIPI CSI，装在前脸 |
-| 8×8 ToF 模块（VL53L5CX） | 1 | 装在前脸 |
-| 小喇叭 | 1 | 接 HAT 的功放 |
-| 3S 电池 | 1 | LiPo 1500 mAh 或 LiHV 2800 mAh，robotd 会自动识别 |
-| PETG、TPU 耗材 | 适量 | TPU 用于脚底、软嘴等软零件 |
-| Xbox 手柄 | 1 | 可选，蓝牙遥控 |
+| Feetech HL-2915 servo | 15 | the 3S version; 2 × 5 in the legs, 5 in the head (neck, head, beak). Microduck's printed parts fit as is, M2×6 self-tapping screws |
+| Orange Pi Zero 3W | 1 | the 4 GB version recommended |
+| HAT carrier board | 1 | in the head, stacked on the Orange Pi. This fork uses the Robot HAT E1 ([docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md), section 6): it takes the battery and feeds the servos itself |
+| PDB/IMU board | 1 | in the body. Not used in this fork: a BNO055 breakout (Adafruit 4646) on a Qwiic cable to the HAT's J5 is the body IMU, mounted on the [LiPo plate](hardware/cad/lipo-plate/README.md) |
+| IMX219 camera module | 1 | MIPI CSI, in the face |
+| 8×8 ToF module (VL53L5CX) | 1 | in the face |
+| Small speaker | 1 | on the HAT's amplifier |
+| 3S battery | 1 | LiPo 1500 mAh or LiHV 2800 mAh; robotd identifies it automatically. With the Robot HAT E1: an XT60 plug |
+| PETG and TPU filament | as needed | TPU for the soft parts (soles, soft beak and so on) |
+| Xbox gamepad | 1 | optional, Bluetooth remote control |
 
-### 常见问题
+### FAQ
 
-- **2S 还是 3S？** HL-2915 用 3S。HD-1910 用 2S，HAT 只需换一颗电阻（R11），其它通用。robotd 开机时会识别电池节数和类型，和配置不符就拒绝上电。
-- **舵机通电了但不动？** 飞特 HLS 舵机的"目标电流"和"运行速度"为 0 时不会动。robotd 启动时会自动写好，自己写测试脚本时要记得设置。
-- **走一会儿就不听摇杆了？** 多半是头部舵机过热保护。头里散热有限，生命层会按温度预算让它少动、多休息。
-- **原版 Microduck 能用这套软件吗？** 软件上兼容，Dynamixel 总线驱动没有改动，但我们没有在原版硬件上实测过。
+- **2S or 3S?** The HL-2915 runs on 3S. The HD-1910 runs on 2S, and the HAT needs only one resistor changed (R11); everything else is the same. At start-up robotd identifies the number of cells and the battery type, and refuses to power the servos if they do not match the configuration.
+- **The servos have power but don't move?** Feetech HLS servos do not move while their "target current" and "running speed" are 0. robotd writes them at start-up; remember to set them in your own test scripts.
+- **It stops answering the stick after a while?** Most likely the head servos' overheat protection. The head has little cooling, and the life layer uses a temperature budget to make it move less and rest more.
+- **Does the original Microduck run this software?** In software terms yes, the Dynamixel bus driver is unchanged, but we have not tested it on the original hardware.
 
-## Join the Community · 加入我们
+## Join the Community
 
-欢迎提 [Issue](https://github.com/Animan-AI/DuckBuddy/issues) 和 Pull Request，编译和测试见 [CONTRIBUTING.md](CONTRIBUTING.md)。特别欢迎一起做的方向：
+[Issues](https://github.com/Animan-AI/DuckBuddy/issues) and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for building and testing. We would especially like help with:
 
-- HD-1910 舵机驱动；
-- 用 NPU 做物体检测，接进注意力模块；
-- 用 AprilTag 给任务层做定位；
-- 装机教程和英文翻译。
+- the HD-1910 servo driver;
+- NPU object detection, fed into the attention module;
+- AprilTag localization for the mission layer;
+- the build guide and English translations.
 
 <details>
-<summary>仓库结构</summary>
+<summary>Repository layout</summary>
 
-| 路径 | 内容 |
+| Path | What |
 |---|---|
-| `robotd`、`duck-control`、`kinematics`、`padd`、`robotctl` 等 | Rust 工作区（来自 Microduck，有扩展） |
-| `tools/` | Python 服务：`lifed`、`voiced`、`visiond`、`duckweb`、`duckbrain`、`persona`，装机工作台 `bringup`，以及实机测试脚本 |
-| `firmware/imu-feetech` | IMU 板固件（STM32G031 + LSM6DSV16X，走飞特协议） |
-| `training/` | HL-2915 训练任务、执行器辨识（BAM）、评测脚本、训练好的策略 |
-| `hardware/` | 打印工程（`hardware/print`）、训练用的机器人模型（`hardware/rev-a/mjcf`） |
-| `docs/` | 硬件接口（`docs/hardware`），以及 Microduck 原有的设计文档和使用说明 |
+| `robotd`, `duck-control`, `kinematics`, `padd`, `robotctl`, … | the Rust workspace (from Microduck, extended) |
+| `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `duckbrain`, `persona`, the bring-up workbench `bringup`, and robot test scripts |
+| `firmware/imu-feetech` | the IMU board's firmware (STM32G031 + LSM6DSV16X, speaks the Feetech protocol) |
+| `training/` | HL-2915 training tasks, actuator identification (BAM), evaluation scripts, trained policies |
+| `hardware/` | the print project (`hardware/print`), the robot model used for training (`hardware/rev-a/mjcf`); the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit); the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate (`hardware/cad/lipo-plate`, build123d) |
+| `docs/` | the hardware interface (`docs/hardware`), and Microduck's own design notes and guides |
 
 </details>
 
-玩法、组装、调试、训练，都欢迎进群聊。微信扫码加入：
+Come and chat in the group about playing with it, building, debugging and training. Scan the QR code with WeChat to join:
 
-<p align="center"><img src="docs/media/wechat-group.png" width="300" alt="DuckBuddy 交流群微信二维码"></p>
+<p align="center"><img src="docs/media/wechat-group.png" width="300" alt="DuckBuddy WeChat group QR code"></p>
 
-<p align="center"><sub>群二维码每周更新；过期了请提 Issue，我们会尽快换新的。</sub></p>
+<p align="center"><sub>The group QR code is updated every week; if it has expired, please open an issue and we will replace it soon.</sub></p>
 
 ---
 
-<sub>许可证：软件 Apache-2.0（与 Microduck 相同），文档 CC-BY-4.0；部分组件有各自的许可证，见 [NOTICE](NOTICE)。</sub>
+<sub>License: software Apache-2.0 (same as Microduck), documentation CC-BY-4.0; some components have their own licenses, see [NOTICE](NOTICE).</sub>

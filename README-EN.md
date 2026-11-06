@@ -2,7 +2,7 @@
 
 <p align="center"><b>An open-source embodied AI robot duck — it walks, hears, sees, and has a life of its own.</b></p>
 
-<p align="center">🦆 <b>Make DuckBuddy your real-life buddy duck.</b> <i>让 DuckBuddy 成为你真正的生活伙伴鸭。</i></p>
+<p align="center">🦆 <b>Make DuckBuddy your real-life buddy duck.</b></p>
 
 <p align="center">
 <a href="https://github.com/Animan-AI/DuckBuddy/actions/workflows/ci.yml"><img src="https://github.com/Animan-AI/DuckBuddy/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -11,9 +11,7 @@
 <img src="https://img.shields.io/badge/servos-Feetech%20HL--2915-green" alt="Feetech HL-2915">
 </p>
 
-<p align="center">🌐 <a href="https://animan-ai.github.io/DuckBuddy/"><b>Project page</b></a> (in Chinese): <a href="https://animan-ai.github.io/DuckBuddy/bom.html">BOM</a> · <a href="https://animan-ai.github.io/DuckBuddy/assembly.html">assembly</a> · <a href="https://animan-ai.github.io/DuckBuddy/tutorial.html">getting started</a> · <a href="https://pan.baidu.com/s/1n_kGYn8liX8YniRDvvMkiA?pwd=nway">system image</a> (code nway)</p>
-
-<p align="center"><a href="README.md">中文</a> | English</p>
+<p align="center"><a href="README.md">Chinese</a> | English</p>
 
 https://github.com/user-attachments/assets/7dd5c290-7b48-4f87-a991-7aab6c25632f
 
@@ -211,11 +209,11 @@ Our two boards, the HAT and the PDB/IMU:
 | Step | Where | Status |
 |---|---|---|
 | 1. Get the parts | the parts list below | ✅ list · 🚧 shop links coming |
-| 2. Print | [hardware/print](hardware/print/README.md): Bambu Studio project `DuckBuddy.3mf`, 6 plates, PETG + TPU, settings included | ✅ |
-| 3. Carrier boards | interfaces (pinouts, power, bus): [docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md). The PCB design files are not public; assembled boards are available from the maintainer, or design your own to the interface | ✅ interface |
+| 2. Print | [hardware/print](hardware/print/README.md): Bambu Studio project `DuckBuddy.3mf`, 6 plates, PETG + TPU, settings included. Optional open development head for the Robot HAT E1: [hardware/cad/open-head](hardware/cad/open-head/README.md); optional LiPo plate with the BNO055 mount: [hardware/cad/lipo-plate](hardware/cad/lipo-plate/README.md) | ✅ |
+| 3. Carrier boards | interfaces (pinouts, power, bus): [docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md). The design files of the HAT and PDB/IMU R2f are not public; assembled boards are available from the maintainer, or design your own to the interface. An open, compatible PDB/IMU R3 is in [hardware/pcb/pdb-imu](hardware/pcb/pdb-imu/README.md) (not yet fabricated) | ✅ interface |
 | 4. Flash the IMU | [firmware/imu-feetech](firmware/imu-feetech/README.md): ST-Link on the PDB's J2, one `probe-rs` command | ✅ |
 | 5. Set up the Orange Pi | services in [deploy/opi-dev](deploy/opi-dev/README.md), robot configs in [deploy/robots](deploy/robots) | 🚧 one-step installer coming |
-| 6. Servos, zero pose, whole-robot test | [tools/bringup](tools/bringup/README.md): a web workbench on your computer - servo IDs, joint mapping, zero calibration, IMU firmware, self-test, each page with a guide (in Chinese) | ✅ |
+| 6. Servos, zero pose, whole-robot test | [tools/bringup](tools/bringup/README.md): a web workbench on your computer - servo IDs, joint mapping, zero calibration, IMU firmware, self-test, each page with a guide (in Chinese). New servos can also be set up on a Raspberry Pi test bench with the Robot HAT E1 instead of the Feetech USB board (`--bench`) | ✅ |
 | 7. Policies | trained policies ship in the repo; to train your own see [training](training) | ✅ |
 | 8. Give it a character | [tools/persona](tools/persona/README.md): write your own persona JSON after the example duck | ✅ |
 | 9. Assembly guide, FAQ | a short FAQ below; an illustrated assembly guide is coming | 🚧 |
@@ -226,12 +224,12 @@ Our two boards, the HAT and the PDB/IMU:
 |---|---|---|
 | Feetech HL-2915 servo | 15 | the 3S version; 2 × 5 in the legs, 5 in the head (neck, head, beak). Microduck's printed parts fit as is, M2×6 self-tapping screws |
 | Orange Pi Zero 3W | 1 | the 4 GB version recommended |
-| HAT | 1 | in the head, stacked on the Orange Pi |
-| PDB/IMU board | 1 | in the body |
+| HAT | 1 | in the head, stacked on the Orange Pi. This fork uses the Robot HAT E1 ([docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md), section 6): it takes the battery and feeds the servos itself |
+| PDB/IMU board | 1 | in the body. Not used in this fork: a BNO055 breakout (Adafruit 4646) on a Qwiic cable to the HAT's J5 is the body IMU, mounted on the [LiPo plate](hardware/cad/lipo-plate/README.md) |
 | IMX219 camera module | 1 | MIPI CSI, in the face |
 | 8×8 ToF module (VL53L5CX) | 1 | in the face |
 | Small speaker | 1 | on the HAT's amplifier |
-| 3S battery | 1 | LiPo 1500 mAh or LiHV 2800 mAh; robotd identifies it |
+| 3S battery | 1 | LiPo 1500 mAh or LiHV 2800 mAh; robotd identifies it. With the Robot HAT E1: an XT60 plug |
 | PETG and TPU filament | | TPU for the soft parts (soles, beak) |
 | Xbox gamepad | 1 | optional, Bluetooth |
 
@@ -266,7 +264,7 @@ Our two boards, the HAT and the PDB/IMU:
 | `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `duckbrain`, `persona`, the bring-up workbench `bringup`, robot test scripts |
 | `firmware/imu-feetech` | the IMU board's firmware (STM32G031 + LSM6DSV16X, speaks the Feetech protocol) |
 | `training/` | HL-2915 tasks, actuator identification (BAM), evaluation scripts, trained policies |
-| `hardware/` | the print project (`hardware/print`), the robot model used for training (`hardware/rev-a/mjcf`) |
+| `hardware/` | the print project (`hardware/print`), the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit), the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate (`hardware/cad/lipo-plate`, build123d), the robot model used for training (`hardware/rev-a/mjcf`) |
 | `docs/` | the hardware interface (`docs/hardware`), and Microduck's own design notes and guides |
 
 </details>
