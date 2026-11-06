@@ -2,8 +2,8 @@
 /plugin/;
 
 /*
- * Robot HAT E1 (elec_RPI_Robot_HAT) on Orange Pi Zero 3W (Allwinner A733),
- * as the head board of a DuckBuddy instead of the HAT R3E.
+ * Robot HAT E1 (https://code.caric.io/Robotics/elec_RPI_Robot_HAT) on Orange Pi Zero 3W
+ * (Allwinner A733), the head board of a DuckBuddy.
  *
  * Header wiring of the Robot HAT E1:
  *   TWI0:  PB3 SDA pin 3, PB2 SCL pin 5   codec 0x18, INA226 0x45, LSM6DSV16X 0x6A, Qwiic J5
@@ -12,7 +12,7 @@
  *   I2S0:  PB5 BCLK pin 12, PB6 LRCK pin 35, PB7 DOUT pin 40, PB8 DIN pin 38
  *   UART0: PB9 TX pin 8, PB10 RX pin 10   servo bus (TX sets the bus direction on the HAT)
  *
- * Differences from the HAT R3E overlay (aic3104-a733.dts):
+ * Board notes:
  *   - The codec has its own 12 MHz oscillator (Y1). PB4 (pin 7) goes to the
  *     HAT's Qwiic J6, so it is not muxed as I2S0 MCLK. The machine driver
  *     still tells the codec its MCLK: mclk-fs = 1 with mclk-fp = 12 MHz for
@@ -78,7 +78,7 @@
 		};
 	};
 
-	/* Qwiic J8: the head ToF, on the same bus number (/dev/i2c-2) as on the HAT R3E. */
+	/* Qwiic J8: the head ToF (/dev/i2c-2). */
 	fragment@2 {
 		target = <&twi2>;
 
@@ -152,7 +152,7 @@
 
 	/*
 	 * The servo bus at 500 kbit/s: 24 MHz / 16 / 3, exact on the stock UART
-	 * clock, the same rate the HAT R3E uses on UART7.
+	 * clock.
 	 */
 	fragment@7 {
 		target = <&uart0_pins_active>;

@@ -1,20 +1,23 @@
 # Orange Pi Zero 3W A733 offline audio install
 
-This guide covers the `TLV320AIC3104` on the MicroDuck Orange Pi Zero 3W A733 HAT.
-The target system is currently fixed to:
+This guide covers the `TLV320AIC3104` on the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT), the head board of the robot,
+on the Orange Pi Zero 3W (A733). It also sets up the servo UART and the I²C buses. The target system
+is currently fixed to:
 
 - Board: `orangepizero3w` / `sun60iw2`
 - OS: Debian Trixie, server mode
 - Kernel: `6.6.98-sun60iw2`
-- HAT buses: I2C2, I2S0, UART7
-- Codec address: I2C2 `0x18`
-- Codec reset: PB0, active low
-- Amp enable: PB3, active high
+- HAT buses: TWI0 (I²C, `/dev/i2c-0`), I2S0, UART0 (servo bus, `/dev/ttyS0`), TWI2 (ToF, `/dev/i2c-2`)
+- Codec address: TWI0 `0x18`
+- Codec clock: the HAT's own 12 MHz oscillator; codec reset: an RC on the HAT (no GPIO)
+- Amp: PAM8406, always on (no enable GPIO)
+
+The pin table and the hardware notes are in [`docs/hardware/INTERFACE-CN.md`](../../docs/hardware/INTERFACE-CN.md).
 
 `scripts/setup-board.sh` is only for the Radxa Zero 3W/RK3566. Do not run it on the
 A733. It uses `/boot/armbianEnv.txt`, `ttyS5` and the `rk35xx` kernel, while the
-A733 uses `/boot/orangepiEnv.txt`, `ttyS7` and the `sun60iw2` kernel. The script now
-detects the A733 and stops, so it cannot change the wrong files.
+A733 uses `/boot/orangepiEnv.txt` and the `sun60iw2` kernel. The script detects the A733 and
+stops, so it cannot change the wrong files.
 
 ## 1. Prepare the source archive on your computer
 
@@ -101,7 +104,7 @@ Then run the offline installer:
 ```bash
 cd /home/orangepi/microduck-offline
 sha256sum kernel/linux-sun60iw2-6.6.98-e3ee05f.tar.gz
-sudo sh audio/install-aic3104-a733.sh \
+sudo sh audio/install-aic3104-a733.sh --hat robothat-e1 \
   kernel/linux-sun60iw2-6.6.98-e3ee05f.tar.gz
 sudo reboot
 ```
@@ -111,110 +114,14 @@ The installer does the following:
 1. checks the board model and the running kernel version;
 2. prepares the kernel tree from the local archive;
 3. builds and installs two modules: the AIC3X core and the I2C module;
-4. builds and installs the `microduck-aic3104` DT overlay;
-5. adds the overlay to `/boot/orangepiEnv.txt`;
-6. installs and enables `aic3104-a733.service`.
-
-## 4. Checks without the HAT
-
-With no physical HAT connected, this is the correct state:
-
-```bash
-uname -r
-modinfo snd-soc-tlv320aic3x-i2c | grep -E 'filename|vermagic'
-lsmod | grep snd_soc_tlv320aic3x
-systemctl status aic3104-a733.service --no-pager
-cat /sys/class/leds/microduck-amp-enable/brightness
-```
-
-Expected:
-
-- the kernel and `vermagic` are both `6.6.98-sun60iw2`;
-- both `snd_soc_tlv320aic3x` modules are loaded;
-- the service is `active (exited)`;
-- the log says `TLV320AIC3104 not detected on I2C2`;
-- the amp enable value (PB3) is `0`.
-
-Even with no physical codec, ASoC may register a logical sound card named `aic3104`. So
-seeing this card in `aplay -l` alone does not prove that the HAT is connected.
-
-## 5. Checks with the HAT
-
-Power off, fit the HAT, power on again, then check these in order:
-
-```bash
-i2cdetect -y 2
-journalctl -u aic3104-a733.service -b --no-pager
-cat /sys/class/leds/microduck-amp-enable/brightness
-aplay -l
-arecord -l
-```
-
-Expected: `0x18` shows as `UU`, because the kernel driver uses it. The init log no longer
-says `not detected`, and the amp enable becomes `1`. Last, these tests must be done on the
-real hardware:
-
-- playback on the left and right channels, and a mute test;
-- a recording from each of the two mic inputs, to confirm the `MIC2`/`LINE1` routing;
-- MCLK, BCLK and LRCK checked with an oscilloscope;
-- a reset test and a cold boot test;
-- a stability test of the 5 V, 3.3 V and 1.8 V supplies while the speaker plays.
-
-## 6. Non-audio interfaces already verified
-
-These system nodes are verified on the current prototype:
-
-- UART7: `/dev/ttyS7`
-- I2C2: `/dev/i2c-2`
-- USB camera: `/dev/video0`, driver `uvcvideo`
-- GPU render node: `/dev/dri/renderD128`
-- EGL/OpenGL ES: PowerVR B-Series BXM-4-64, OpenGL ES 3.2
-- Vulkan: PowerVR proprietary driver, Vulkan 1.3
-
-These results show that the drivers and the pinmux are enabled. They do not replace the
-electrical tests of the first HAT built. The only known failed systemd unit at the moment is
-`smartmontools.service`. It is not related to the HAT, the GPU, the camera or the sound card.
-
-## 7. Robot software migration not yet included
-
-This guide covers the A733 board interfaces and the AIC3104 bring-up. It does not mean that the
-current Radxa software image can be deployed to the Orange Pi as it is. The robot software has
-at least three more platform differences:
-
-- the repo default for `robotd` is still `/dev/ttyS5`; the A733 prototype must use `/dev/ttyS7`;
-- `mediad` currently uses the Rockchip `mpph264enc`. The A733 has the `/dev/cedar_dev*` kernel
-  nodes, but the Allwinner user-space hardware encoding pipeline is not verified yet;
-- the `.rknn` detection models are for RK3566/RKNN. On the A733, use CPU ONNX first, or port
-  them to the A733 NPU separately.
-
-So after the sound card passes its hardware checks, the A733 app config and the media
-performance still need their own work and checks. Do not run `scripts/setup-gstreamer.sh` or
-`scripts/setup-npu.sh` on the A733. Both are Rockchip-only for now.
-
-## 8. Robot HAT E1 instead of the HAT R3E
-
-The Robot HAT E1 (`elec_RPI_Robot_HAT`) has the codec on TWI0 with its own 12 MHz oscillator and an RC
-reset, an always-on PAM8406 amp, and the servo bus on UART0 (header pins 8/10). The pin table and the
-hardware notes are in [`docs/hardware/INTERFACE-CN.md`](../../docs/hardware/INTERFACE-CN.md), section 6.
-
-Install with the same kernel source archive as in sections 1 to 3, and add `--hat robothat-e1`:
-
-```bash
-cd /home/orangepi/microduck-offline
-sudo sh audio/install-aic3104-a733.sh --hat robothat-e1 \
-  kernel/linux-sun60iw2-6.6.98-e3ee05f.tar.gz
-sudo reboot
-```
-
-Compared with the R3E install, the installer:
-
-1. compiles `aic3104-a733-robothat.dts` as the `microduck-aic3104` overlay: the codec on TWI0 with no
-   reset GPIO (TWI0 at 400 kHz, which also carries the body IMU, a BNO055 on Qwiic J5), the codec told its MCLK is 12 MHz, I2S0 without PB4 (it goes to the HAT's Qwiic J6),
-   TWI2 for the ToF on Qwiic J8, and UART0 on PB9/PB10;
-2. installs `aic3104-a733-robothat.service` as `aic3104-a733.service`: the codec bus is found in
+4. compiles `aic3104-a733-robothat.dts` as the `microduck-aic3104` overlay and adds it to
+   `/boot/orangepiEnv.txt`: the codec on TWI0 with no reset GPIO (TWI0 at 400 kHz, which also
+   carries the body IMU, a BNO055 on Qwiic J5), the codec told its MCLK is 12 MHz, I2S0 without PB4
+   (it goes to the HAT's Qwiic J6), TWI2 for the ToF on Qwiic J8, and UART0 on PB9/PB10;
+5. installs and enables `aic3104-a733-robothat.service` as `aic3104-a733.service`: the codec bus is found in
    sysfs, the mics are J2 (left) and J9 (right), and the line output gain is 0 dB (the PAM8406 clips
    at +9 dB with a full-scale signal);
-3. sets `console=display` in `/boot/orangepiEnv.txt` and masks `serial-getty@ttyS0.service`, so
+6. sets `console=display` in `/boot/orangepiEnv.txt` and masks `serial-getty@ttyS0.service`, so
    Linux does not write to the servo bus. U-Boot still prints its boot messages on UART0 at
    115200 baud before Linux starts.
 
@@ -228,9 +135,12 @@ and `imu_axes` with `tools/bringup`:
 sudo cp deploy/robots/opi-hl2915-robothat-e1.toml /etc/robot/robotd.toml
 ```
 
-Then check:
+## 4. Checks
 
 ```bash
+uname -r
+modinfo snd-soc-tlv320aic3x-i2c | grep -E 'filename|vermagic'
+lsmod | grep snd_soc_tlv320aic3x
 ls /sys/bus/i2c/devices/*-0018          # the codec, bound by the driver
 journalctl -u aic3104-a733.service -b --no-pager
 aplay -l; arecord -l                     # card "aic3104"
@@ -240,10 +150,31 @@ fuser -v /dev/ttyS0                      # nothing but robotd
 python3 tools/robot-tests/ping_all.py 50 /dev/ttyS0   # with robotd stopped
 ```
 
-To use the onboard MEMS mic instead of J2/J9, set `Environment=AIC3104_MIC_ROUTE=mic2r-both` in
-`/etc/systemd/system/aic3104-a733.service`. The MEMS mic is a single mic, so the sound direction
-(`tools/voiced/doa.py`) does not work with it.
+Expected:
 
-Still to test on the hardware: playback and both mic inputs, the boot messages on the servo bus
-(the servos should ignore them), the ToF on J8, and the BNO055 on J5 (robotd's journal says
-"BNO055 in IMU fusion mode"; the bring-up tool's IMU test checks rate, noise and calibration).
+- the kernel and `vermagic` are both `6.6.98-sun60iw2`;
+- both `snd_soc_tlv320aic3x` modules are loaded;
+- `0x18` shows as `UU` on bus 0, because the kernel driver uses it;
+- the service is `active (exited)`, and its log does not say `not detected`.
+
+Even with no codec found, ASoC may register a logical sound card named `aic3104`. So seeing this
+card in `aplay -l` alone does not prove that the codec works. Last, check on the real hardware:
+
+- playback through the speaker, and a mute test;
+- a recording from each of the two mic inputs (J2 left, J9 right), to confirm the `LINE1` routing;
+- a cold boot test;
+- a stability test of the 5 V and 3.3 V supplies while the speaker plays.
+
+## 5. Other robot software on the A733
+
+This guide covers the A733 board interfaces and the AIC3104 bring-up. The robot software has more
+platform differences:
+
+- robotd's servo port is `/dev/ttyS0`; the robot config above sets it;
+- `mediad` currently uses the Rockchip `mpph264enc`. The A733 has the `/dev/cedar_dev*` kernel
+  nodes, but the Allwinner user-space hardware encoding pipeline is not verified yet;
+- the `.rknn` detection models are for RK3566/RKNN. On the A733, use CPU ONNX first, or port
+  them to the A733 NPU separately.
+
+Do not run `scripts/setup-gstreamer.sh` or `scripts/setup-npu.sh` on the A733. Both are
+Rockchip-only for now.

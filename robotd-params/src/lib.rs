@@ -933,12 +933,12 @@ impl Default for SafetyParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Bus {
-    /// Serial port the servos and the IMU board share. The Orange Pi Zero 3W (A733) wires them
-    /// to UART7, `/dev/ttyS7`.
+    /// Serial port of the servo bus. On the Orange Pi Zero 3W (A733) with the Robot HAT E1 it is
+    /// UART0 (header pins 8/10), `/dev/ttyS0`.
     pub port: String,
     /// Which servos are on it. The original alpha runs Dynamixel XL330s; this robot runs
     /// Feetech HL-2915s, which speak a different protocol at a different rate (500 kbit/s —
-    /// UART7 cannot make 1 Mbit/s) and need the mapping below.
+    /// the A733's UART cannot make 1 Mbit/s) and need the mapping below.
     pub servo: ServoKind,
     /// Feetech only: the bus ID of the servo at each joint, in `JOINT_NAMES` order (left leg,
     /// neck/head/mouth, right leg). Empty until the robot has been mapped; the bus refuses to
@@ -1015,9 +1015,9 @@ pub struct Bus {
 #[serde(rename_all = "snake_case")]
 pub enum ImuSource {
     /// The PDB/IMU board on the servo bus.
-    #[default]
     Bus,
-    /// A BNO055 on I²C.
+    /// A BNO055 on I²C (the Robot HAT E1 build).
+    #[default]
     Bno055,
 }
 
@@ -1114,7 +1114,7 @@ pub struct UpdateGate {
 impl Default for Bus {
     fn default() -> Self {
         Self {
-            port: "/dev/ttyS7".into(),
+            port: "/dev/ttyS0".into(),
             servo: ServoKind::default(),
             joint_ids: Vec::new(),
             joint_signs: Vec::new(),

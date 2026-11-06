@@ -1,7 +1,7 @@
 /**
  * DuckBuddy PDB/IMU, revision R3 — power distribution + IMU on the servo bus.
  *
- * Replacement for the R2f board described in docs/hardware/INTERFACE-CN.md §3, made to lie flat on the
+ * Replacement for the R2f board (same interface), made to lie flat on the
  * hip servos: 55 × 31 mm (R2f is 55 × 28; the extra 3 mm is at the bottom edge) with both top corners
  * cut away (6 × 3 mm) for the neck servo, 2 layers. Same connector pinouts and the same MCU pin map as
  * firmware/imu-feetech. J4/J6 are side-entry PH2.0 headers whose plugs point to the bottom edge (the
@@ -663,7 +663,7 @@ export default () => (
       </React.Fragment>
     ))}
 
-    {/* Connectors: pin 1 GND, pin 2 V, pin 3 DATA (INTERFACE-CN.md §3). Through-hole, soldered by hand
+    {/* Connectors: pin 1 GND, pin 2 V, pin 3 DATA (as on R2f). Through-hole, soldered by hand
         (doNotPlace: not fitted by the assembly service). Pin 2 is wired in POWER.
         J4/J6 are side-entry PH2.0 headers (4.8 mm tall) at the side edges, pins at y = 3, opening toward
         the bottom edge: the plug goes in from the bottom and lies flat on the board, and its wires leave

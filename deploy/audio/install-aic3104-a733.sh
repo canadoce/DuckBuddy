@@ -2,11 +2,11 @@
 # Install the TLV320AIC3104 codec modules, the head HAT's DT overlay and the
 # mixer service on an Orange Pi Zero 3W (A733).
 #
-#   sudo sh install-aic3104-a733.sh [--hat r3e|robothat-e1] linux-sun60iw2-6.6.98.tar.gz
+#   sudo sh install-aic3104-a733.sh [--hat robothat-e1|r3e] linux-sun60iw2-6.6.98.tar.gz
 #
-#   --hat r3e          HAT R3E (default): codec on TWI2, servo bus on UART7 (/dev/ttyS7)
-#   --hat robothat-e1  Robot HAT E1: codec on TWI0, servo bus on UART0 (/dev/ttyS0);
+#   --hat robothat-e1  Robot HAT E1 (default): codec on TWI0, servo bus on UART0 (/dev/ttyS0);
 #                      also moves the serial console off UART0
+#   --hat r3e          the upstream HAT: codec on TWI2, servo bus on UART7
 set -eu
 
 KERNEL_VERSION="$(uname -r)"
@@ -28,9 +28,9 @@ grep -qx 'BOARDFAMILY=sun60iw2' /etc/orangepi-release || \
 	die "this installer only supports the A733/sun60iw2 board family"
 [ "$KERNEL_VERSION" = "$EXPECTED_KERNEL" ] || \
 	die "expected $EXPECTED_KERNEL, running $KERNEL_VERSION"
-HAT=r3e
+HAT=robothat-e1
 if [ "${1:-}" = --hat ]; then
-	[ "$#" -ge 2 ] || die "--hat needs a value: r3e or robothat-e1"
+	[ "$#" -ge 2 ] || die "--hat needs a value: robothat-e1 or r3e"
 	HAT=$2
 	shift 2
 fi
@@ -43,9 +43,9 @@ case "$HAT" in
 		OVERLAY_SOURCE=aic3104-a733-robothat.dts
 		SERVICE_SOURCE=aic3104-a733-robothat.service
 		;;
-	*) die "unknown HAT: $HAT (r3e or robothat-e1)" ;;
+	*) die "unknown HAT: $HAT (robothat-e1 or r3e)" ;;
 esac
-[ "$#" -eq 1 ] || die "usage: sudo $0 [--hat r3e|robothat-e1] /path/to/linux-sun60iw2-6.6.98.tar.gz"
+[ "$#" -eq 1 ] || die "usage: sudo $0 [--hat robothat-e1|r3e] /path/to/linux-sun60iw2-6.6.98.tar.gz"
 
 SOURCE_ARCHIVE=$1
 [ -f "$SOURCE_ARCHIVE" ] || die "kernel source archive not found: $SOURCE_ARCHIVE"

@@ -30,6 +30,7 @@ joint_signs   = [-1, -1,  -1,  -1,  -1,   1,   1,  -1,  -1,  -1,  -1,  -1,  -1, 
 # 1.6 deg (11.4 counts/deg). OPi: life-hr17.toml.
 joint_offsets = [100, 0, -606, -256, -129, 242, 227, -35, 139, -98, 93, 248, 523, 840, 223]
 imu = true
+imu_source = "bus"
 # U2 on the PDB's bottom face: measured lying on its back (gravity on sensor -y) and
 # upright (sensor +z), checked leaning forward.
 imu_axes = "y,x,-z"
