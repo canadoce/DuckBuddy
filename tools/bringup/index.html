@@ -118,7 +118,7 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
     <h3>When robotd must be stopped and when it must run</h3>
     <table>
       <tr><th>Task</th><th>robotd</th><th>Reason</th></tr>
-      <tr><td>Servos tab (scan, change ID, wiggle)<br>"Servo bus" and "IMU" in Robot test<br>"Check over the bus" in IMU firmware</td><td><b>Stopped</b></td><td>robotd holds /dev/ttyS7 all the time; if both send packets at once, they break each other</td></tr>
+      <tr><td>Servos tab (scan, change ID, wiggle)<br>"Servo bus" and "IMU" in Robot test<br>"Check over the bus" in IMU firmware</td><td><b>Stopped</b></td><td>robotd holds the servo bus (/dev/ttyS0) all the time; if both send packets at once, they break each other</td></tr>
       <tr><td>Zero calibration</td><td><b>Running</b></td><td>The calibration page reads the joint angles that robotd reports</td></tr>
       <tr><td>Microphone, speaker, ToF, camera</td><td>Either</td><td>They do not use the servo bus; for the camera, stop visiond first</td></tr>
     </table>
@@ -134,7 +134,7 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
       <li>Last, run "Servo bus" once more and export the report to keep.</li>
     </ol>
     <h3>USB debug board</h3>
-    <p>New servos ship at 1M baud. When the OPi UART7 is set to 1M, it really runs at 750k, so <b>new servos can only be set up through the Feetech USB debug board (CH343)</b>. Plug it into the computer, pick its serial port on the right (marked "CH34x" in the list), and click <kbd>Use this port</kbd>. If the FD software is open, it holds this port; close FD first.</p>
+    <p>New servos ship at 1M baud. When the OPi UART is set to 1M, it really runs at 750k, so <b>new servos can only be set up through the Raspberry Pi test bench or the Feetech USB debug board (CH343)</b>. For the USB board: Plug it into the computer, pick its serial port on the right (marked "CH34x" in the list), and click <kbd>Use this port</kbd>. If the FD software is open, it holds this port; close FD first.</p>
   </details>
   <div class="grid2">
     <div class="card">
@@ -152,7 +152,7 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
     </div>
     <div class="card">
       <h2>Feetech USB debug board (on the computer)</h2>
-      <div class="note">New servos ship at 1M. The OPi UART7 set to 1M really runs at 750k, so changing ID and baud rate on new servos needs this board (CH343).
+      <div class="note">New servos ship at 1M. The OPi UART set to 1M really runs at 750k, so changing ID and baud rate on new servos needs the test bench or this board (CH343).
         The FD software holds the serial port while it is open.</div>
       <div class="row"><select id="usb-port"></select><button id="usb-open">Use this port</button>
         <button id="usb-ports">Refresh list</button></div>
@@ -274,7 +274,7 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
     <div id="mp-out"></div>
   </div>
   <div class="row">
-    <label>Bus <select id="sv-target"><option value="robot">Robot /dev/ttyS7</option>
+    <label>Bus <select id="sv-target"><option value="robot">Robot /dev/ttyS0</option>
       <option value="usb">USB debug board</option></select></label>
     <label>Baud <select id="sv-baud">
       <option value="500000">500k</option><option value="1000000">1M</option><option value="250000">250k</option>

@@ -48,7 +48,7 @@ shelf and the hinge knuckles at the top. About 38 × 55 × 89 mm, 14.3 cm³.
 | Velcro strap, 27 mm wide, up to 2 mm thick, about 20 cm | 1 | around the pack, through the pad's channel |
 | Adafruit BNO055 breakout (4646) | 1 | on the plate's front face |
 | M2.5 × 4 self-tapping screw | 4 | through the BNO055's holes into the standoffs (2.6 mm deep pilots; longer screws reach the strap channel) |
-| Qwiic / STEMMA QT cable, about 30 cm | 1 | BNO055 to the Robot HAT E1's J5 |
+| Qwiic / STEMMA QT cable, about 30 cm | 1 | BNO055 to the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT)'s J5 |
 
 1. Screw the BNO055 on the four standoffs, its parts facing forward (away from the plate), its
    long side up. Plug the Qwiic cable into the socket at its bottom edge (the top one has no

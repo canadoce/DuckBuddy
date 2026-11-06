@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Change the Feetech HLS servos on the bus to a new baud rate (written to EEPROM, kept after power off).
 
-The Orange Pi A733 UART7 can only output 500k accurately (1M is really 750k), so the servo bus always uses 500k.
+The Orange Pi A733 UART can only output 500k accurately (1M is really 750k), so the servo bus always uses 500k.
 
 Usage (close the FD desktop app first, it holds the serial port):
     python tools/servo/set_baud.py                 # default COM11, only 1 servo allowed on the bus

@@ -7,9 +7,9 @@
 
 Layout: web page ⇄ this program (computer) ⇄ two "agents" (agent.py, one JSON per line):
 - Robot agent: on each connection, agent.py is sent over ssh on stdin and runs on the robot (nothing to install there).
-  It owns the /dev/ttyS7 servo bus (500k) and runs the mic / speaker / ToF / camera / IMU tests.
+  It owns the /dev/ttyS0 servo bus (500k) and runs the mic / speaker / ToF / camera / IMU tests.
 - USB agent: agent.py --usb runs on the computer, with the Feetech USB board (CH343). Factory servos run at 1M;
-  the OPi's UART7 set to 1M really runs at 750k, so a new servo's ID / baud rate can only be changed here.
+  the OPi's UART set to 1M really runs at 750k, so a new servo's ID / baud rate can only be changed here.
   Or a Raspberry Pi test bench (--bench): a Pi with a servo HAT (Robot HAT E1) whose UART does 1M
   exactly. agent.py --usb runs on it over ssh, the same way as on the robot, and takes the USB board's place.
 Zero calibration reuses tools/joint_align as is (its Calib / Renderer / page): it starts on port+1 and is embedded in the page.

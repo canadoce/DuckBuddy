@@ -1,4 +1,4 @@
-//! The Feetech bus: HL-2915 servos (HLS series) on the Orange Pi's UART7.
+//! The Feetech bus: HL-2915 servos (HLS series) on the Orange Pi's UART0.
 //!
 //! Same shape as [`crate::bus`] — one combined `sync_read` per tick covering the IMU board
 //! and all 15 servos, one `sync_write` of goal positions — on a different wire protocol and
@@ -9,7 +9,7 @@
 //!
 //! What differs from the XL330 bus, and why each matters:
 //!
-//! - **500 kbit/s, not 1 Mbit/s.** UART7 on the A733 is clocked from a 24 MHz crystal and
+//! - **500 kbit/s, not 1 Mbit/s.** The A733 UART is clocked from a 24 MHz crystal and
 //!   cannot divide down to 1 Mbit/s: asking for it silently yields 750 kbit/s, which no servo
 //!   understands. 500k divides exactly. A 16-device read costs ~7.5 ms of a 20 ms tick.
 //! - **Positions are sign-magnitude**, bit 15 the sign, not two's complement. Single-turn
@@ -35,7 +35,7 @@ use crate::imu::{IMU_BLOCK_LEN, SflpDecoder};
 use crate::io::{ImuStale, IoError, JointTargets, Result, RobotIo, Sensors, SlowSensors};
 use crate::model::{IMU_DXL_ID, NUM_JOINTS};
 
-/// Exactly representable on the A733's UART7 (24 MHz / 16 / 3). 1 Mbit/s is not.
+/// Exactly representable on the A733's UART (24 MHz / 16 / 3). 1 Mbit/s is not.
 pub const BAUD_RATE: u32 = 500_000;
 
 /// Value of the baud register (6) that means [`BAUD_RATE`]: 0..7 = 1M/500k/250k/128k/115200/

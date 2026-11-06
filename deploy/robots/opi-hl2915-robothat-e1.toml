@@ -1,5 +1,6 @@
 # robotd.toml for a MicroDuck built with the Robot HAT E1 and no PDB/IMU board:
-# Orange Pi Zero 3W (A733) + Robot HAT E1 in the head, 15 Feetech HL-2915 servos on the HAT's
+# Orange Pi Zero 3W (A733) + Robot HAT E1 in the head
+# (https://code.caric.io/Robotics/elec_RPI_Robot_HAT), 15 Feetech HL-2915 servos on the HAT's
 # servo bus, a BNO055 in the body on the HAT's Qwiic J5. Copy to /etc/robot/robotd.toml
 # (or run `robotd --params <this file>`).
 #
@@ -43,6 +44,6 @@ walk_max_c = 70.0
 
 [battery]
 # HL-2915s, rated 9-14 V: a 3S LiPo or LiHV, into the HAT's XT60 (J15). The HAT's D5 must be
-# the SMBJ15A for 3S (elec_RPI_Robot_HAT/docs/12V_battery_swap.md).
+# the SMBJ15A for 3S (https://code.caric.io/Robotics/elec_RPI_Robot_HAT/src/branch/main/docs/12V_battery_swap.md).
 cells = [3]
 max_volts = 14.0

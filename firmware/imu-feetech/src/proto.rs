@@ -22,7 +22,7 @@ pub const SYNC_READ: u8 = 0x82;
 /// 1 = 500 kbit/s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Baud {
-    /// 500 kbit/s: the DuckBuddy bus (the A733's UART7 cannot do a true 1 Mbit/s).
+    /// 500 kbit/s: the DuckBuddy bus (the A733's UART cannot do a true 1 Mbit/s).
     K500,
     /// 1 Mbit/s: an STS3215 bus at its factory speed (Frankenduck).
     M1,

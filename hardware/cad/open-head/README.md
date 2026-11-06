@@ -4,7 +4,7 @@ An open head for development. It replaces the head's top shell (`top_head_shell`
 [`hardware/print/DuckBuddy.3mf`](../../print/README.md)) and bolts to the bottom head shell at
 the same three points. It holds:
 
-- the **Robot HAT E1** on four standoffs, next to the Orange Pi Zero 3W and not on it, so the
+- the **[Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT)** on four standoffs, next to the Orange Pi Zero 3W and not on it, so the
   Pi's cooling shield stays clear. The two boards are joined by Dupont wires;
 - the **speaker** QY2831F16-6R4F-PO (2 W, 6 Ω, 28 × 31 × 15 mm) in a ring beside the HAT;
 - the top edge of the **face plate** (with the Pi on its back), in a collar.
@@ -90,7 +90,7 @@ of the motor support (Z 14.7). This matches a measurement on the robot (about 8 
 | `src/head_meshes.py` | loading the head meshes in the head frame, the neck-motion sweep |
 | `src/assembly.py` | the HAT (its STEP), the speaker and the Pi with cooling shield and Dupont plugs, as a CAD model |
 | `checks/fit_check.py` | the fit check (below) |
-| `vendor/robot_hat_e1.step` | the HAT's STEP, from the `elec_RPI_Robot_HAT` project (`production/ASE01187-E1_elec_RPI_Robot_HAT_STEP.zip`); `.xbf` is the same, converted for fast loading |
+| `vendor/robot_hat_e1.step` | the HAT's STEP, from the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) project ([`production/ASE01187-E1_elec_RPI_Robot_HAT_STEP.zip`](https://code.caric.io/Robotics/elec_RPI_Robot_HAT/src/branch/main/production/ASE01187-E1_elec_RPI_Robot_HAT_STEP.zip)); `.xbf` is the same, converted for fast loading |
 | `reference/` | the head parts in the head frame, made by `tools/` (below) |
 | `tools/` | scripts that make `reference/` |
 

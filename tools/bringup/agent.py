@@ -3,12 +3,12 @@
 
 On each connection app.py sends this file over ssh on stdin and runs it (nothing to install on the robot),
 or it runs directly on the computer with the Feetech USB board (new servos at the factory 1M can only get a new ID/baud rate this way:
-the OPi's UART7 set to 1M really runs at 750k).
+the OPi's UART set to 1M really runs at 750k).
 
     {"id": 1, "op": "scan", "args": {"lo": 0, "hi": 30}}
     -> {"id": 1, "ok": true, "result": {...}}
 
-Needs only the standard library + pyserial. Bus operations check for robotd first and refuse while it runs (it holds /dev/ttyS7).
+Needs only the standard library + pyserial. Bus operations check for robotd first and refuse while it runs (it holds the servo bus, /dev/ttyS0).
 Each bus operation opens and closes the serial port itself and does not keep it open. Operations that move a servo (center / wiggle / torque)
 are sent by the page only after the user confirms "held"; this side only does the hard safety limits (current limit, torque off on deviation/overcurrent, refuse multi-turn readings).
 
@@ -179,7 +179,7 @@ class Bus:
 # ---- Runtime context -----------------------------------------------------------------------------
 
 class Ctx:
-    port = "/dev/ttyS7"
+    port = "/dev/ttyS0"
     baud = 500000
     usb = False
     config = None
@@ -496,7 +496,7 @@ def op_set_baud(args):
         time.sleep(0.1)
     note = ""
     if not Ctx.usb and to == 1000000:
-        note = " (the OPi's UART7 set to 1M really runs at 750k, so the robot bus will not find it)"
+        note = " (the OPi's UART set to 1M really runs at 750k, so the robot bus will not find it)"
     with bus_session(to) as bus:
         ok = bus.ping(sid) is not None
         if ok:
@@ -1454,7 +1454,7 @@ def main():
     Ctx.baud = a.baud
     if not a.usb:
         Ctx.config, Ctx.cfg_path = load_config(a.config)
-    Ctx.port = a.port or bus_cfg().get("port") or "/dev/ttyS7"
+    Ctx.port = a.port or bus_cfg().get("port") or "/dev/ttyS0"
     out = sys.stdout
     out.write(json.dumps({"hello": True, "ops": sorted(OPS)}) + "\n")
     out.flush()

@@ -13,13 +13,12 @@
 # is far easier to diagnose remotely than a daemon that will not run.
 
 [bus]
-# Serial port the 15 servos and the imu_to_dxl board share. /dev/ttyS7 is UART7 on the
-# Orange Pi Zero 3W (A733) with the HAT R3E; with the Robot HAT E1 it is /dev/ttyS0 (UART0,
-# header pins 8/10). A board wired differently can also be overridden per-invocation
+# Serial port of the servo bus. /dev/ttyS0 is UART0 (header pins 8/10) on the Orange Pi
+# Zero 3W (A733) with the Robot HAT E1. A board wired differently can also be overridden per-invocation
 # with `robotd --port`, which is the dev escape hatch rather than the thing to edit here.
-port = "/dev/ttyS7"
+port = "/dev/ttyS0"
 
-# Servo family: "feetech_hls" (HL-2915, 500 kbit/s — UART7 cannot make 1 Mbit/s) or
+# Servo family: "feetech_hls" (HL-2915, 500 kbit/s — the A733's UART cannot make 1 Mbit/s) or
 # "dynamixel_xl330" (the original alpha).
 # servo = "feetech_hls"
 
@@ -37,11 +36,11 @@ port = "/dev/ttyS7"
 # firmware exists; orientation then reads as not ready and nothing needing it will run.
 # imu = true
 
-# Feetech: where the IMU is. "bus" is the PDB/IMU board (ID 200 on the servo bus);
-# "bno055" is a BNO055 on I2C, the Robot HAT E1 build, which has no PDB: the breakout in the
-# body on a Qwiic cable to the HAT's J5 (TWI0, /dev/i2c-0). Not J8: the ToF there holds that
-# bus for 10-30 ms per frame, longer than the IMU delay the walking policies tolerate.
-# imu_source = "bus"
+# Feetech: where the IMU is. "bno055" is a BNO055 on I2C, the Robot HAT E1 build, which has
+# no PDB: the breakout in the body on a Qwiic cable to the HAT's J5 (TWI0, /dev/i2c-0). Not J8: the ToF there holds that
+# bus for 10-30 ms per frame, longer than the IMU delay the walking policies tolerate. "bus" is
+# the PDB/IMU board (ID 200 on the servo bus).
+# imu_source = "bno055"
 # imu_i2c = "/dev/i2c-0"
 # 40 = 0x28 (the Adafruit breakout), 41 = 0x29 with its ADR pin high.
 # imu_i2c_address = 40

@@ -1,7 +1,7 @@
 # PDB/IMU R3 — open power distribution + IMU board
 
 R3 is an open version of the PDB/IMU board, written in [tscircuit](https://tscircuit.com) (`index.circuit.tsx`).
-It follows the interface in [`docs/hardware/INTERFACE-CN.md`](../../../docs/hardware/INTERFACE-CN.md) §3 and is a drop-in replacement for R2f:
+It is a drop-in replacement for the R2f board, with the same interface:
 
 - 55 × 31 mm, 2 layers, made to lie flat on the hip servos. R2f is 55 × 28 mm: R3 is 3 mm taller, all of it at the
   bottom edge (the J1 side), and both top corners (the J5 side) are cut away, 6 × 3 mm, so the neck servo clears the board.

@@ -3,7 +3,7 @@
 `DuckBuddy.3mf` is the Bambu Studio project of all the robot's printed parts, in 6 plates: shell parts, head, wheels, TPU soft parts, structural parts (including the head top shell with the added cooling holes and microphone holes), and a BAM arm. The parts come from the original Microduck printed parts, with these changes:
 
 - **Head face plate (face_part)**: the mounts are changed to hold the **8×8 ToF module** (VL53L5CX type) and the **IMX219 camera module**;
-- **Head shell (top_head_shell)**: **cooling holes** and **two microphone holes** added (one left, one right, matching J7/J8 on the HAT, used to tell which direction a sound comes from);
+- **Head shell (top_head_shell)**: **cooling holes** and **two microphone holes** added (one left, one right, matching J2/J9 on the HAT, used to tell which direction a sound comes from);
 - **BAM arm** (plate 6, new): a 120×20×3 mm flat plate. Two holes at one end mount it on the servo output horn. It swings on the servo during servo parameter identification ([BAM](https://github.com/Rhoban/bam)). You do not need to print it if you only build the robot;
 - All other parts (legs, hips, feet, body shell, battery tray and so on) are the original ones. The HL-2915 servos fit directly (same outer shape, hole positions and output shaft as the XL330, M2×6 self-tapping screws).
 
@@ -37,7 +37,7 @@ Plate 6 is a 120×20×3 mm arm for identifying the servos with BAM (not needed f
 2026-10-30: the unmodified old head top shell removed, the reworked one moved to plate 5; plate 6 is now the BAM arm.
 
 **Open head shell** (optional, not in `DuckBuddy.3mf`): a development head that replaces the head top
-shell and holds the Robot HAT E1 beside the Orange Pi and the speaker, with the electronics exposed. Model,
+shell and holds the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) beside the Orange Pi and the speaker, with the electronics exposed. Model,
 print files and assembly steps: [`hardware/cad/open-head`](../cad/open-head/README.md). It needs the three
 holes of the bottom head shell drilled to 3.2 mm for M3 screws.
 

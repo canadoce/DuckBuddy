@@ -39,10 +39,10 @@ Other options:
 
 ## Raspberry Pi test bench (in place of the Feetech USB board)
 
-A Raspberry Pi with the Robot HAT E1 (`elec_RPI_Robot_HAT`) can do everything the USB board does:
+A Raspberry Pi with a [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) can do everything the USB board does:
 the new-servo wizard, scan, set ID / baud rate, center, wiggle, register reads and writes, and the
 joint mapping on a servo chain plugged into the HAT. The Pi's UART runs 1 Mbit/s exactly (its
-UART clock is 48 MHz), so it talks to factory servos, which the Orange Pi's UART7 cannot do.
+UART clock is 48 MHz), so it talks to factory servos, which the Orange Pi's UART cannot do.
 
 `agent.py --usb` runs on the Pi over ssh, the same way as on the robot. Nothing is copied to the Pi.
 
@@ -54,7 +54,7 @@ Set up the Pi once:
 - `sudo apt install python3-serial`.
 - ssh with a key from the computer (no password).
 - Servo power on the HAT: a 3S battery for the HL-2915 (the HAT's D5 must be the SMBJ15A, see
-  `elec_RPI_Robot_HAT/docs/12V_battery_swap.md`); a 2S battery for the HD-1910. Plug the servo into
+  [Using a 12 V battery](https://code.caric.io/Robotics/elec_RPI_Robot_HAT/src/branch/main/docs/12V_battery_swap.md)); a 2S battery for the HD-1910. Plug the servo into
   a 3-pin servo connector (J13 / J14, pin order 1 GND · 2 battery · 3 DATA).
 
 Then start the app with `--bench user@pi-address` (add `--host` too when the robot is on as well).
@@ -83,7 +83,7 @@ mounted but not cabled yet:
 ## Layout
 
 ```
-browser ⇄ app.py (computer) ─ ssh ─ agent.py (robot: /dev/ttyS7 500k, plus audio / ToF / camera)
+browser ⇄ app.py (computer) ─ ssh ─ agent.py (robot: /dev/ttyS0 500k, plus audio / ToF / camera)
                             ├─ agent.py --usb (computer: Feetech USB board, COMx)
                             ├─ agent.py --usb on the test bench Pi over ssh (/dev/serial0, 1M), with --bench
                             ├─ tools/joint_align (zero calibration, port +1)
@@ -91,7 +91,7 @@ browser ⇄ app.py (computer) ─ ssh ─ agent.py (robot: /dev/ttyS7 500k, plus
 ```
 
 - On each connection `agent.py` is sent to the robot on ssh's stdin and runs there, so there are no files to deploy on the robot. It takes one JSON request per line and answers with one JSON line. You can also run it on the robot by hand: `python3 agent.py`, then type requests on stdin.
-- Factory servos run at 1M. The OPi's UART7 set to 1M really runs at only 750k, so a new servo's ID and baud rate must be set with the Feetech USB board (CH343, pick its serial port on the overview tab) or the test bench. The FD software holds this serial port while it is open.
+- Factory servos run at 1M. The OPi's UART set to 1M really runs at only 750k, so a new servo's ID and baud rate must be set with the Feetech USB board (CH343, pick its serial port on the overview tab) or the test bench. The FD software holds this serial port while it is open.
 
 ## Safety rules (already built into the tool)
 
