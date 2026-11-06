@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """The clap test for the two head mics (docs/project/attention-gaze-design-20261018-CN.md §9): record the
-48 kHz stereo stream while someone claps or says "小白" from a known direction, find each event, and print
+48 kHz stereo stream while someone claps or says "Xiaobai" (the robot's name) from a known direction, find each event, and print
 the direction doa.py makes of it.
 
-    python3 doa_check.py record left90 8        # 8 s to ~/robot/recs/doa/left90.wav (clap 3x, say 小白)
+    python3 doa_check.py record left90 8        # 8 s to ~/robot/recs/doa/left90.wav (clap 3x, say Xiaobai)
     python3 doa_check.py analyze ~/robot/recs/doa/left90.wav [--swap] [--spacing 0.06]
 
 Channel 0 is the codec's left input (J7, "MIC-L"); whether that mic sits on the robot's left is what

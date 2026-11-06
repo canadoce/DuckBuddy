@@ -86,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         a = self.server.args
         if self.path in ("/", "/index.html"):
-            self._send(200, PAGE.replace("小白", NAME).encode(), "text/html; charset=utf-8")
+            self._send(200, PAGE.replace("Xiaobai", NAME).encode(), "text/html; charset=utf-8")
         elif self.path == "/api/state":
             self._json({"life": rpc(a.lifed, "life.state"), "vision": rpc(a.vision, "vision.state"),
                         "net": network(), "now": time.time()})
@@ -122,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
             res = rpc(a.lifed, "life.event", {"type": "say", "text": text, "addressed": True, "named": True})
             self._json({"ok": res is not None})
         elif self.path == "/api/scan":
-            res = rpc(a.lifed, "life.event", {"type": "say", "text": "连网", "addressed": True, "named": True})
+            res = rpc(a.lifed, "life.event", {"type": "say", "text": "connect to wifi", "addressed": True, "named": True})  # lifed's voice command words for "join a network"
             self._json({"ok": res is not None})
         elif self.path == "/api/volume":
             try:
@@ -145,9 +145,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 PAGE = r"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>小白</title>
+<title>Xiaobai</title>
 <style>
 :root { --bg:#f6f4ef; --card:#fff; --ink:#24221f; --mute:#8a857c; --duck:#fff3c4; --you:#dcefff; --line:#e7e2d8;
         --ok:#2f8f4e; --warn:#c77700; --bad:#c43c3c; }
@@ -197,58 +197,58 @@ img.look { display:block; width:100%; max-width:320px; border-radius:10px; margi
 </style></head>
 <body>
 <header>
-  <h1>🦆 小白</h1>
+  <h1>🦆 Xiaobai</h1>
   <div class="chips" id="chips"></div>
 </header>
 <main>
   <div class="convo" id="convo"></div>
   <div id="mission"></div>
-  <img id="photo" alt="小白看到的">
-  <div id="log"><div class="empty">还没有对话。叫一声"小白"，或者在下面打字。</div></div>
+  <img id="photo" alt="What Xiaobai sees">
+  <div id="log"><div class="empty">No conversation yet. Call "Xiaobai", or type below.</div></div>
 </main>
 <footer>
   <div class="row">
-    <input id="text" placeholder="对小白说…" enterkeyhint="send" autocomplete="off">
-    <button class="primary" id="send">发送</button>
+    <input id="text" placeholder="Say to Xiaobai…" enterkeyhint="send" autocomplete="off">
+    <button class="primary" id="send">Send</button>
   </div>
   <div class="tools">
-    <button id="scan">📶 扫码连网</button>
-    <button id="look">📷 看看它看到的</button>
+    <button id="scan">📶 Scan QR to join Wi-Fi</button>
+    <button id="look">📷 See what it sees</button>
   </div>
-  <div class="vol">🔈<input type="range" id="vol" min="20" max="100" step="5" value="100" aria-label="音量">🔊<span id="volv"></span></div>
+  <div class="vol">🔈<input type="range" id="vol" min="20" max="100" step="5" value="100" aria-label="Volume">🔊<span id="volv"></span></div>
 </footer>
 <script>
-const STATE = {OFF:"没上力", WAKING:"醒来中", IDLE:"发呆", ATTENDING:"在听你说", PLAYING:"走路中",
-               RESTING:"休息中", SLEEPING:"睡觉中", FALLEN:"摔倒了", TIRED:"没电了"};
-const EMO = {"开心":"😄","好奇":"🤔","撒娇":"🥺","害羞":"😳","困":"😪","难过":"😢","惊讶":"😮"};
-const VIA = {brain:"大脑", small:"小脑", vision:"眼睛", eyes:"大脑看图", mission:"任务"};
-const MSTATE = {proposed:"等你说「开始」", running:"进行中", paused:"暂停", done:"完成", failed:"没做到", cancelled:"取消了"};
+const STATE = {OFF:"no torque", WAKING:"waking up", IDLE:"idle", ATTENDING:"listening to you", PLAYING:"walking",
+               RESTING:"resting", SLEEPING:"sleeping", FALLEN:"fallen", TIRED:"battery empty"};
+const EMO = {"happy":"😄","curious":"🤔","coy":"🥺","shy":"😳","sleepy":"😪","sad":"😢","surprised":"😮"};  // keys are the emotion names lifed sends
+const VIA = {brain:"brain", small:"small brain", vision:"eyes", eyes:"brain looking at a picture", mission:"mission"};
+const MSTATE = {proposed:"waiting for you to say \"start\"", running:"running", paused:"paused", done:"done", failed:"failed", cancelled:"cancelled"};
 const MSTEP = {pending:"·", running:"▶", done:"✓", failed:"✗"};
 function modeLine(L) {
   const real = L.missions_mode === "real";
-  const tof = L.tof_m == null ? "无数据" : (L.tof_m === "far" ? "前方空旷" : `前方 ${L.tof_m} m`);
-  return `<div class="mmode">🧭 任务模式：<b class="${real ? "bad" : ""}">${real ? "实机（会真的走）" : "演练（不会动）"}</b>
-    <button id="mswitch">${real ? "切回演练" : "切到实机"}</button> <span class="mnote">ToF：${tof}</span></div>`;
+  const tof = L.tof_m == null ? "no data" : (L.tof_m === "far" ? "clear ahead" : `${L.tof_m} m ahead`);
+  return `<div class="mmode">🧭 Mission mode: <b class="${real ? "bad" : ""}">${real ? "real (it will really walk)" : "dry run (it will not move)"}</b>
+    <button id="mswitch">${real ? "Back to dry run" : "Switch to real"}</button> <span class="mnote">ToF: ${tof}</span></div>`;
 }
 async function switchMode(L) {
   const toReal = L.missions_mode !== "real";
-  if (toReal && !confirm("实机模式下，说出路线并说「开始」后小白会真的走。确认它站在空旷的平地上、你在旁边，并且随时可以说「停」或碰手柄？")) return;
+  if (toReal && !confirm("In real mode, Xiaobai will really walk after you say the route and then \"start\". Make sure it stands on open, flat ground, you are next to it, and you can say \"stop\" or touch the gamepad at any moment. Go on?")) return;
   await post("/api/missions", {mode: toReal ? "real" : "dry"});
   setTimeout(refresh, 300);
 }
 function missionCard(M) {
   if (!M) return "";
   const rows = M.steps.map(s => `<div class="mstep ${s.status}">${MSTEP[s.status] || "·"} ${esc(s.words)}${s.note ? ` <span class="mnote">${esc(s.note)}</span>` : ""}</div>`).join("");
-  const sim = M.sim ? ` · 模拟位置 (${M.sim.x}, ${M.sim.y}) m，朝向 ${M.sim.yaw_deg}°，${M.sim.posture === "sitting" ? "坐着" : "站着"}` : "";
-  return `<div class="mission"><div class="mhead">🧭 任务${M.mode === "dry" ? "（演练，不会真的动）" : ""}：<b>${MSTATE[M.state] || M.state}</b>${M.why ? "（" + esc(M.why) + "）" : ""}</div>${rows}
-    <div class="mnote">位置的把握：±${M.sigma_m} m，±${M.sigma_deg}°${sim}</div></div>`;
+  const sim = M.sim ? ` · simulated position (${M.sim.x}, ${M.sim.y}) m, heading ${M.sim.yaw_deg}°, ${M.sim.posture === "sitting" ? "sitting" : "standing"}` : "";
+  return `<div class="mission"><div class="mhead">🧭 Mission${M.mode === "dry" ? " (dry run, it will not really move)" : ""}: <b>${MSTATE[M.state] || M.state}</b>${M.why ? " (" + esc(M.why) + ")" : ""}</div>${rows}
+    <div class="mnote">Position certainty: ±${M.sigma_m} m, ±${M.sigma_deg}°${sim}</div></div>`;
 }
-const INTENT = {sleep:"睡觉", rest:"休息", sit:"坐下", stand:"站起来", wake:"醒来", net:"连网", bye:"道别", chat:"聊天", unclear:"听不清"};
-const ACT = {ignore:"不理", command:"当指令", small:"小脑答", nod:"点头", brain:"大脑答"};
-const SEEN = {looking_at_duck:"看着它", waving:"招手", thumbs_up:"竖大拇指", reaching:"伸手", passing:"路过", busy:"在忙", unclear:"看不清"};
+const INTENT = {sleep:"sleep", rest:"rest", sit:"sit down", stand:"stand up", wake:"wake up", net:"join a network", bye:"goodbye", chat:"chat", unclear:"unclear"};
+const ACT = {ignore:"ignore", command:"as a command", small:"small brain answers", nod:"nod", brain:"brain answers"};
+const SEEN = {looking_at_duck:"looking at it", waving:"waving", thumbs_up:"thumbs up", reaching:"reaching out", passing:"passing by", busy:"busy", unclear:"cannot tell"};
 function jevNote(j) {
   if (!j || j.for_duck == null) return "";
-  return ` · Jev：对我说 ${Math.round(j.for_duck * 100)}% · ${INTENT[j.intent] || j.intent || "?"}${j.action ? " → " + (ACT[j.action] || j.action) : ""}`;
+  return ` · Jev: said to me ${Math.round(j.for_duck * 100)}% · ${INTENT[j.intent] || j.intent || "?"}${j.action ? " → " + (ACT[j.action] || j.action) : ""}`;
 }
 let lastKey = "";
 function chip(label, value, cls) { return `<span class="chip">${label} <b class="${cls||""}">${value}</b></span>`; }
@@ -257,31 +257,31 @@ function hhmm(t) { const d = new Date(t * 1000); return d.toLocaleTimeString("zh
 async function refresh() {
   let s;
   try { s = await (await fetch("/api/state")).json(); } catch (e) {
-    document.getElementById("chips").innerHTML = chip("连接", "连不上小白", "bad"); return; }
+    document.getElementById("chips").innerHTML = chip("Connection", "cannot reach Xiaobai", "bad"); return; }
   const L = s.life || {}, net = s.net || {}, V = s.vision || {};
   const c = [];
-  c.push(chip("状态", STATE[L.state] || (s.life ? L.state : "lifed 没在运行"), s.life ? "" : "bad"));
-  if (L.battery_pct != null) c.push(chip("电量", Math.round(L.battery_pct) + "%", L.battery_pct < 20 ? "bad" : L.battery_pct < 35 ? "warn" : "ok"));
-  if (L.max_c != null) c.push(chip("最热", Math.round(L.max_c) + "°C", L.max_c >= 65 ? "bad" : L.max_c >= 58 ? "warn" : ""));
-  c.push(chip("大脑", L.brain_online === false ? "离线·用小脑" : "在线", L.brain_online === false ? "warn" : "ok"));
-  c.push(chip("网络", net.ssid ? esc(net.ssid) + (net.ip ? " · " + net.ip : "") : "未连接", net.ssid ? "" : "bad"));
-  if (L.clock) c.push(chip("时间", L.clock));
+  c.push(chip("State", STATE[L.state] || (s.life ? L.state : "lifed is not running"), s.life ? "" : "bad"));
+  if (L.battery_pct != null) c.push(chip("Battery", Math.round(L.battery_pct) + "%", L.battery_pct < 20 ? "bad" : L.battery_pct < 35 ? "warn" : "ok"));
+  if (L.max_c != null) c.push(chip("Hottest", Math.round(L.max_c) + "°C", L.max_c >= 65 ? "bad" : L.max_c >= 58 ? "warn" : ""));
+  c.push(chip("Brain", L.brain_online === false ? "offline · using small brain" : "online", L.brain_online === false ? "warn" : "ok"));
+  c.push(chip("Network", net.ssid ? esc(net.ssid) + (net.ip ? " · " + net.ip : "") : "not connected", net.ssid ? "" : "bad"));
+  if (L.clock) c.push(chip("Time", L.clock));
   const VOL = L.volume;
   if (VOL) {
-    c.push(chip("音量", VOL.now + "%" + (VOL.night_cap ? "（夜间）" : "")));
+    c.push(chip("Volume", VOL.now + "%" + (VOL.night_cap ? " (night)" : "")));
     const el = document.getElementById("vol");
     if (!volDragging) el.value = VOL.user;
     document.getElementById("volv").textContent = VOL.user + "%";
   }
   const J = L.jev;
-  if (J) c.push(chip("Jev", J.mode === "off" ? "关" : `${J.mode === "shadow" ? "影子" : "开"} · ${J.ok} 次${J.fallback ? " · 退回 " + J.fallback : ""}`,
+  if (J) c.push(chip("Jev", J.mode === "off" ? "off" : `${J.mode === "shadow" ? "shadow" : "on"} · ${J.ok} times${J.fallback ? " · fell back " + J.fallback : ""}`,
                      J.mode === "off" ? "" : (J.ok ? "ok" : "warn")));
   const look = V.last_look;
-  if (look && look.via === "jev") c.push(chip("刚才看到", look.present ? "有人 · " + (SEEN[look.activity] || look.activity) : "没人"));
-  if (V.mode === "scan_qr" || L.scanning) c.push(chip("眼睛", "正在找二维码…", "warn"));
+  if (look && look.via === "jev") c.push(chip("Just saw", look.present ? "someone · " + (SEEN[look.activity] || look.activity) : "nobody"));
+  if (V.mode === "scan_qr" || L.scanning) c.push(chip("Eyes", "looking for a QR code…", "warn"));
   document.getElementById("chips").innerHTML = c.join("");
   document.getElementById("convo").textContent = L.convo_s_left > 0
-    ? `对话中，还会听 ${Math.round(L.convo_s_left)} 秒` : "叫一声“小白”开始对话";
+    ? `In a conversation, still listening for ${Math.round(L.convo_s_left)} s` : "Call “Xiaobai” to start a conversation";
   document.getElementById("mission").innerHTML = (L.missions_mode ? modeLine(L) : "") + missionCard(L.mission);
   const sw = document.getElementById("mswitch");
   if (sw) sw.onclick = () => switchMode(L);
@@ -290,11 +290,11 @@ async function refresh() {
   if (key !== lastKey) {
     lastKey = key;
     const html = d.slice().reverse().map(x => x.who === "you"
-      ? `<div class="msg you"><div class="bubble"><div class="meaning">${esc(x.text)}</div><div class="meta">${hhmm(x.t)}${x.command ? " · 指令" : ""}${esc(jevNote(x.jev))}</div></div></div>`
+      ? `<div class="msg you"><div class="bubble"><div class="meaning">${esc(x.text)}</div><div class="meta">${hhmm(x.t)}${x.command ? " · command" : ""}${esc(jevNote(x.jev))}</div></div></div>`
       : `<div class="msg duck"><div class="bubble"><div class="meaning">${EMO[x.emotion] || ""} ${esc(x.meaning || x.text)}</div>
-           ${x.photo ? `<img class="look" src="/api/look/${encodeURIComponent(x.photo)}.jpg" alt="它看到的" onerror="this.remove()">` : ""}
-           <div class="say">鸭语：${esc(x.text)}</div><div class="meta">${hhmm(x.t)} · ${VIA[x.via] || ""}</div></div></div>`).join("");
-    document.getElementById("log").innerHTML = html || '<div class="empty">还没有对话。叫一声"小白"，或者在下面打字。</div>';
+           ${x.photo ? `<img class="look" src="/api/look/${encodeURIComponent(x.photo)}.jpg" alt="What it saw" onerror="this.remove()">` : ""}
+           <div class="say">Duck-speak: ${esc(x.text)}</div><div class="meta">${hhmm(x.t)} · ${VIA[x.via] || ""}</div></div></div>`).join("");
+    document.getElementById("log").innerHTML = html || '<div class="empty">No conversation yet. Call "Xiaobai", or type below.</div>';
   }
 }
 async function post(path, body) {
@@ -312,12 +312,12 @@ volEl.oninput = () => { volDragging = true; document.getElementById("volv").text
 volEl.onchange = async () => { await post("/api/volume", {value: Number(volEl.value)}); volDragging = false; setTimeout(refresh, 300); };
 document.getElementById("scan").onclick = async () => { await post("/api/scan"); setTimeout(refresh, 300); };
 document.getElementById("look").onclick = async () => {
-  const b = document.getElementById("look"); b.disabled = true; b.textContent = "📷 拍照中…";
+  const b = document.getElementById("look"); b.disabled = true; b.textContent = "📷 Taking a photo…";
   const r = await post("/api/photo");
-  b.disabled = false; b.textContent = "📷 看看它看到的";
+  b.disabled = false; b.textContent = "📷 See what it sees";
   const img = document.getElementById("photo");
   if (r.ok) { img.src = "/api/photo.jpg?" + Date.now(); img.style.display = "block"; }
-  else { alert("拍不了：" + (r.reason || "眼睛没在运行")); }
+  else { alert("Cannot take a photo: " + (r.reason || "the eyes are not running")); }
 };
 refresh(); setInterval(refresh, 1000);
 </script>

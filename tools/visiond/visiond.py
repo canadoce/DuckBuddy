@@ -2,7 +2,7 @@
 """visiond: Xiaobai's eyes on the OPi (docs/project/vision-tof-design-20261017-CN.md).
 
 Step one is QR Wi-Fi provisioning: show the duck your phone's "share hotspot" QR code and it joins
-that network. lifed asks (`vision.scan_qr`) when it hears "小白，连网"; this runs the camera
+that network. lifed asks (`vision.scan_qr`) when it hears "Xiaobai, connect to the network"; this runs the camera
 (duckcam: vendor ISP for exposure, grey frames), decodes QR codes with OpenCV, and for a Wi-Fi code
 (WIFI:T:WPA;S:name;P:secret;;) joins it through NetworkManager — the robot's user may since
 2026-10-17 (/etc/polkit-1/rules.d/50-microduck-nm.rules). The outcome goes back to lifed as an
@@ -126,8 +126,8 @@ def split_terse(line: str) -> list[str]:
 
 def ssid_on_air(ssid: str) -> str:
     """The name as it can be broadcast: an SSID is at most 32 bytes, and a phone with a longer name
-    sends it cut short while its share code keeps it whole (2026-10-17: "风一样的男子，简称风子" is 33
-    bytes in UTF-8, on the air "风一样的男子，简称风")."""
+    sends it cut short while its share code keeps it whole (2026-10-17: an 11-character Chinese name, "a man
+    like the wind, Fengzi for short", is 33 bytes in UTF-8; on the air its last character was gone)."""
     return ssid.encode("utf-8")[:32].decode("utf-8", "ignore")
 
 
@@ -638,7 +638,7 @@ class Visiond:
         answers = None
         if self.a.jev_images == "on":
             # the camera only while the frame is taken, not while Jev thinks (2026-10-17: holding a cup out
-            # for "你看这是什么" set off this look first, and the asked-for photo found the camera busy)
+            # for "look, what is this?" set off this look first, and the asked-for photo found the camera busy)
             t0, jpeg = time.monotonic(), None
             try:
                 got = self.frame_now(0.0)

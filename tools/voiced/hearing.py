@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""voiced, part 1: Xiaobai's ears, offline (P2 of docs/project/duck-life-roadmap-20261014-CN.md).
+"""voiced, part 1: the duck's ears, offline (P2 of docs/project/duck-life-roadmap-20261014-CN.md).
 
 Always listening, no wake word: silero VAD cuts each utterance out of the mic stream, SenseVoice-Small
-(int8, sherpa-onnx, on the OPi's CPU) transcribes it, and the text goes to lifed as an event. Its name
-in the sentence ("小白", and what ASR hears for it) is a call — the duck turns and answers — and opens
-a conversation in lifed, inside which what is said is for the duck without the name (`named` on each
-`say`; voiced's own 8 s `addressed` window is kept for older lifeds).
+(int8, sherpa-onnx, on the OPi's CPU, set to English) transcribes it, and the text goes to lifed as an
+event. Its name in the sentence (the persona's name, and what ASR writes for it: whole words, any
+case) is a call — the duck turns and answers — and opens a conversation in lifed, inside which what is
+said is for the duck without the name (`named` on each `say`; voiced's own 8 s `addressed` window is
+kept for older lifeds).
 
 Adapted from WaliRobot's `brain/wali/hearing.py` (same models, same lessons: copy a VAD segment before
 popping it, transcribe on its own thread so the mic loop never stalls, restart arecord when it dies,
@@ -37,40 +38,52 @@ from persona import load as load_persona  # noqa: E402
 
 PERSONA = load_persona()
 NAME = PERSONA.name
-# what SenseVoice writes for the name when it mishears it (the persona's list: for 小白, 小拜 / 晓白 / ...)
+# what SenseVoice writes for the name when it mishears it (the persona's list: for "Biscuit", "biscuits" /
+# "biskit" / ...)
 NAME_ALIASES = PERSONA.name_aliases
+# The name and its mishearings, as whole words in any case ("Biscuit," or "BISCUIT" but not "biscuitry");
+# a space in an alias matches any run of spaces or punctuation ("bis kit", "bis-kit")
+NAME_RE = re.compile(r"(?<![a-z0-9])(?:" + "|".join(
+    r"[\s,.!?-]+".join(re.escape(w) for w in n.split())
+    for n in sorted({NAME, *NAME_ALIASES}, key=len, reverse=True) if n.split()) + r")(?![a-z0-9])", re.I)
+# SenseVoice's language: the duck is spoken to in English
+LANGUAGE = "en"
 ADDRESSED_S = 8.0          # after a call, speech is for the duck this long
-# 0.5 cut "小白" short to 0.7 s, heard as "喂" (2026-10-14: servo and fan noise at RMS 0.026, a voice
-# at 1 m only ~0.08); 0.35 keeps the whole word
+# 0.5 cut the name short to 0.7 s, heard as another word (2026-10-14: servo and fan noise at RMS 0.026,
+# a voice at 1 m only ~0.08); 0.35 keeps the whole word. Tuned on the two-syllable Chinese name: check
+# it again with the English name (a short or soft name is the easiest to cut).
 VAD_THRESHOLD = 0.35
 PGA_CAPTURE = 72           # codec capture gain, 0.5 dB steps (the board came up at 60)
 VAD_MIN_SILENCE = 0.35
 VAD_MIN_SPEECH = 0.25
 VAD_MAX_SPEECH = 12.0
 MIN_RMS = 0.01
-# VAD opens late on a soft onset: alone, "小白" was cut to 0.7 s and heard as "这班" / "喂". Each
-# segment is re-cut from the raw stream with this much before and after it.
+# VAD opens late on a soft onset: alone, the name was cut to 0.7 s and heard as other words. Each
+# segment is re-cut from the raw stream with this much before and after it (tuned on the Chinese name).
 PRE_ROLL_S, POST_ROLL_S = 0.25, 0.1
 # The VAD listens through a neural denoiser (GTCRN, sherpa-onnx, 0.5 MB): on the robot it took the
 # servo / fan floor from RMS 0.027 to 0.0008 while a voice lost only 3 dB. SenseVoice still gets the
-# raw audio — denoised, "小白" came out "拜白".
+# raw audio — denoised, the name came out wrong.
 DENOISER = "gtcrn_simple.onnx"
 HISTORY_S = 30.0             # quieter segments are noise, not fed to ASR (raise if it hallucinates)
 MIN_CHARS = 1
 # The VAD's own segment is the denoised audio, where steady noise is all but gone and a voice keeps
 # its level: gate on that, not on the raw re-cut. 2026-10-16: for 14 minutes something in the room
 # kept the raw level at RMS 0.057 (a voice at 1 m is ~0.08) and the VAD cut a segment every 5 s —
-# 181 of them, SenseVoice hearing "嗯。", "。", "Okay.", "う" — while the quiet room's denoised floor
+# 181 of them, SenseVoice hearing "Mm.", ".", "Okay.", a Japanese kana — while the quiet room's denoised floor
 # is 0.0006-0.0044. Speech the same evening (denoised): 0.020-0.021 at 1 m, 0.016-0.018 at 2-3 m;
 # the gate sits at half the far voice and twice the floor's peak.
 DN_MIN_RMS = 0.008
-# What ASR makes of noise and murmurs: an utterance that is only these (and punctuation) is dropped.
-FILLERS = {"嗯", "嗯嗯", "啊", "啊啊", "哦", "噢", "喔", "呃", "额", "唉", "哎", "诶", "欸", "哈", "嘿", "我", "没",
-           "oh", "ok", "okay", "yeah", "yes", "no", "hmm", "mm", "uh", "um", "ah", "the", "i", "so"}
-PUNCT_RE = re.compile(r"[\s，,。.！!？?、~～…:：;；\"'“”‘’()（）-]+")
-CJK_RE = re.compile(r"[一-鿿]")
-# short non-Chinese utterances that are real words to the duck (SenseVoice writes 拜拜 as "88")
-KEEP = {"88", "886", "bye", "byebye", "hello", "hi"}
+# What ASR makes of noise and murmurs: an utterance that is only these words (and punctuation) is
+# dropped. Seen on the robot in auto mode: "Okay." and "Mm." out of fan hiss; "you", "the" and "i" are
+# what an English model writes for a breath or a click. Check the noise log on the robot and add to it.
+FILLERS = {"uh", "um", "umm", "uhm", "hmm", "hm", "mm", "mmm", "mhm", "ah", "oh", "eh", "er", "erm", "huh", "ha",
+           "ok", "okay", "yeah", "the", "a", "i", "so", "and", "you", "it", "is"}
+# Short words that are real commands or answers, never noise, whatever the list above says: "stop"
+# must reach lifed even said once and alone.
+KEEP = {"stop", "wait", "go", "sit", "rest", "start", "cancel", "yes", "no", "bye", "hi", "hello", "hey", "louder",
+        "quieter", "continue", "halt", "freeze", "sleep"}
+WORD_RE = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 STATS_S = 600.0              # how often the drop counts go to the log
 TAG_RE = re.compile(r"<\|[^|]*\|>")
 LIFED = "/tmp/lifed.sock"
@@ -90,7 +103,7 @@ def log(msg):
 
 def make_recognizer(d):
     return sherpa_onnx.OfflineRecognizer.from_sense_voice(
-        model=f"{d}/model.int8.onnx", tokens=f"{d}/tokens.txt", num_threads=2, use_itn=True, language="auto")
+        model=f"{d}/model.int8.onnx", tokens=f"{d}/tokens.txt", num_threads=2, use_itn=True, language=LANGUAGE)
 
 
 def make_vad(d):
@@ -121,14 +134,26 @@ def transcribe(rec, samples):
 
 
 def noise_text(text):
-    """Whether a transcript is what noise sounds like: nothing but punctuation, filler syllables, or
-    a short fragment with no Chinese in it (SenseVoice's language=auto turns hiss into "Okay." / "う")."""
-    core = PUNCT_RE.sub("", text).lower()
-    if not core or core in FILLERS:
+    """Whether a transcript is what noise sounds like: no English words at all (only punctuation, or
+    another script: "う"), or nothing but filler words ("Okay.", "Uh, the."). Short real words stay:
+    "Stop!", "Go.", "Sit."."""
+    ws = WORD_RE.findall(text.lower().replace("\u2019", "'"))
+    if not ws:
         return True
-    if core in KEEP:
+    if any(w in KEEP for w in ws):
         return False
-    return not CJK_RE.search(core) and len(core) <= 8
+    return all(w in FILLERS for w in ws)
+
+
+def named_in(text):
+    """Whether `text` says the duck's name (or a mishearing of it), and the text without it."""
+    if not NAME_RE.search(text):
+        return False, text
+    rest = re.sub(r"\s+", " ", NAME_RE.sub(" ", text))
+    rest = re.sub(r"\s+([,.!?;:])", r"\1", rest)
+    rest = re.sub(r"[,;:]+(?=[,.!?;:])", "", rest)              # "Okay, Biscuit." -> "Okay."
+    rest = re.sub(r"^[\s,.!?;:~-]+|[\s,;:~-]+$", "", rest)
+    return True, rest
 
 
 def to_lifed(event):
@@ -182,11 +207,11 @@ class Ears:
         where = {"yaw": round(d.yaw, 3) if ok else 0.0, "yaw_back": round(d.yaw_back, 3) if ok else None,
                  "dir_sigma": round(d.sigma, 3) if d else None, "dir_conf": round(d.conf, 2) if d else 0.0,
                  "dir_ok": ok}
-        named = NAME in text or any(x in text for x in NAME_ALIASES)
-        rest = text
-        for n in (NAME, *NAME_ALIASES):
-            rest = rest.replace(n, "")
-        rest = rest.strip(" ，,。.！!？?、~～")
+        named, rest = named_in(text)
+        if not named:
+            rest = text.strip(" ,.!?~")
+        elif not re.search(r"[a-z0-9]", rest, re.I):
+            rest = ""                                          # the name alone
         if named:
             self.addressed_until = now + ADDRESSED_S
             to_lifed({"type": "call", "text": text, **where})
@@ -220,7 +245,7 @@ class Ears:
             if len(text) < MIN_CHARS:
                 continue
             took = f"{len(samples) / 16000:.1f} s in {time.time() - t0:.2f} s (rms {rms:.3f}, denoised {dn_rms:.4f})"
-            if noise_text(text) and NAME not in text:
+            if noise_text(text) and not NAME_RE.search(text):
                 log(f"noise {text!r}: {took}")
                 self.count("noise_text")
                 continue

@@ -15,6 +15,9 @@ readable.
     from persona import load
     P = load()          # P.name, P.character, ...
 
+The same directory holds duckspeak.py, which turns English text into duck-speak syllables for
+robotd; the services that make the duck talk (lifed, duckbrain) import it from here.
+
 Each service finds this module in the `persona` directory beside its own (tools/persona in the
 repo; ~/persona on the robot; the brain's directory's sibling on the brain box) — see
 `sys.path` in each.
@@ -34,13 +37,15 @@ USER_PATH = "~/.config/duck/persona.json"
 class Persona:
     # its name, as said to it and as ASR writes it
     name: str
-    name_pinyin: str                  # for duck-speak lines that say it ("xiao3 bai2")
-    name_aliases: tuple               # what the ASR writes for the name when it mishears it
+    name_syllables: str               # how duck-speak says it, robotd's syllables with tones ("bis1 kit5");
+                                      # empty: made from the name by duckspeak.py
+    name_aliases: tuple               # what the ASR writes for the name when it mishears it: words or
+                                      # short phrases, matched as whole words in any case ("biscuits")
     # who it is, for the language models
     description: str                  # third person, for the judgments (Jev): what the duck is
     character: str                    # first person: the brain's expression prompt opens with it
     chat_character: str               # first person, for plain chat (the brain's /chat)
-    say_style: str                    # how its duck-speak sounds ("简单的口头话")
+    say_style: str                    # how its duck-speak sounds ("short, simple spoken words")
     say_examples: str                 # a few duck-speak lines, to set the register
     express_style: str                # how it answers like something alive: "- ...\n" lines
     # the life layer's knobs (lifed Config): 0-1
@@ -86,7 +91,10 @@ def load(path: str | None = None) -> Persona:
             raise ValueError(f"{chosen}: unknown persona keys {unknown}")
         d.update(own)
     d = {k: v for k, v in d.items() if not k.startswith("_")}
+    # a list of strings is one text, except the aliases: a list of names (joined, "biscuits" + "biskit"
+    # was one alias per letter)
+    aliases = d.pop("name_aliases", None) or ()
     d = {k: _text(v) for k, v in d.items()}
-    d["name_aliases"] = tuple(d.get("name_aliases") or ())
+    d["name_aliases"] = (aliases,) if isinstance(aliases, str) else tuple(aliases)
     d["source"] = chosen
     return Persona(**d)

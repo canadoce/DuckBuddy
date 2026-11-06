@@ -1,55 +1,79 @@
-# persona — 鸭子是谁
+# persona — who the duck is
 
-框架（生命层、语音、视觉、大脑服务）和"这只鸭子是谁"是分开的。名字、性格、说话的风格、声音都放在一个 JSON 人设文件里，各个服务启动时读取它。
+The framework (life layer, voice, vision, brain service) is kept apart from "who this duck is". The name, character, way of speaking and voice all live in one JSON persona file, which each service reads at start-up.
 
-| 文件 | 内容 |
+| File | Content |
 |---|---|
-| `persona.py` | 加载器，字段说明也在这里 |
-| `example.json` | 示例鸭子"豆豆"。开源仓库只带这一份 |
-| `test_persona.py` | 测试 |
+| `persona.py` | the loader; the field descriptions are here too |
+| `example.json` | the example duck, "Biscuit". The open-source repo ships only this one |
+| `duckspeak.py` | turns English text into duck-speak syllables for robotd (used by lifed and duckbrain) |
+| `test_persona.py`, `test_duckspeak.py` | tests |
 
-**用到人设的地方**：
+**Where the persona is used**:
 
-| 服务 | 用到什么 |
+| Service | What it uses |
 |---|---|
-| voiced | 它的名字，以及语音识别常听错成的字 |
-| lifed | 名字、活泼程度、话多程度；离线小脑里报名字的台词 |
-| duckweb | 网页上显示的名字 |
-| duckbrain | 鸭语回应提示词里的"你是谁、什么性格、怎么说话"，以及语音合成的风格和参考音 |
-| duckbrain/judge.py | 给 Jev 的"这只鸭子是什么"，以及各个问题里的名字 |
+| voiced | its name, and the words that speech recognition often hears by mistake in place of the name (`name_aliases`) |
+| lifed | name, how lively it is, how talkative it is; the lines in the offline small brain where it says its name (`name_syllables`) |
+| duckweb | the name shown on the web page |
+| duckbrain | "who you are, what your character is, how you talk" in the duck-speak reply prompt, and the speech synthesis style and reference voice |
+| duckbrain/judge.py | "what this duck is", given to Jev, and the name in each question |
 
-回应的格式（JSON 字段、动作清单）和"不知道就说不知道"这类规则属于框架，不在人设里。
+The reply format (JSON fields, list of actions) and rules such as "if you don't know, say you don't know" belong to the framework, not to the persona.
 
-## 怎么找到人设文件
+## How the persona file is found
 
-按这个顺序找，用第一个存在的：
-1. 环境变量 `$DUCK_PERSONA` 指定的文件；
-2. `~/.config/duck/persona.json`；
-3. 本目录的 `example.json`。
+It looks in this order and uses the first one that exists:
+1. the file named by the environment variable `$DUCK_PERSONA`;
+2. `~/.config/duck/persona.json`;
+3. `example.json` in this directory.
 
-找到的文件会叠加在 `example.json` 之上，所以只需写和示例不同的字段。写错字段名会直接报错，不会悄悄退回示例。
+The file it finds is laid on top of `example.json`, so you only need to write the fields that differ from the example. A wrong field name gives an error right away; it does not quietly fall back to the example.
 
-文本字段可以写成字符串列表，加载时直接拼接、不加分隔，需要换行的地方自己写 `\n`。
+Text fields can be written as a list of strings. On loading they are joined directly, with no separator; write `\n` yourself where you need a line break. `name_aliases` is the exception: it is a list of separate names.
 
-## 部署
+## The name
 
-各服务从自己目录的**同级** `persona/` 目录导入 `persona.py`：
-- 仓库里是 `tools/persona`；
-- 机器人上是 `~/persona`；
-- 大脑服务器上是大脑目录的同级目录。
+- `name`: what you call the duck. Pick a word that is not common in everyday talk, with two syllables if you can: a very short or soft name is easy for the voice detector to cut and for speech recognition to miss.
+- `name_aliases`: what speech recognition writes when it mishears the name, in lowercase (for "Biscuit": "biscuits", "biskit", ...). voiced matches the name and these as whole words, in any case: "BISCUIT," counts, "biscuitry" does not. Look at voiced's log (`heard: ...`) after calling the duck a few times and add what it wrote.
+- `name_syllables`: how the duck says its own name in duck-speak, as robotd syllables with tone digits ("bis1 kit5"). Leave it empty and it is made from the name.
 
-**机器人（Orange Pi）**：
+## Language
+
+The duck is spoken to in English:
+
+- voiced runs SenseVoice with `language="en"`. It drops a transcript as noise only when it has no English words, or only filler words ("Okay.", "Mm.", "Uh, the."). Short commands such as "Stop.", "Go." or "Sit." always pass.
+- lifed matches its command words as whole words ("hi" is not found in "this"), and not right after a negation ("don't sit down"). The words that stop something ("stop", "wait", "cancel") always count.
+- The duck answers in duck-speak: robotd makes one quack per syllable. `duckspeak.py` turns the English words of an answer into robotd's syllables: one per English syllable, the vowel kept, the stressed syllable high, the last one falling (or rising for a question), and the punctuation as pauses.
+- The few spoken instructions (Wi-Fi by QR code, its page address, missions) are recorded clips in an English voice. After changing `tools/lifed/prompts.py`, render them again and copy them to the robot:
+
+```bash
+uv run --no-project --with edge-tts --with numpy --with scipy --with soundfile \
+    python tools/lifed/render_prompts.py /tmp/voice
+scp /tmp/voice/*.wav <robot>:lifed/voice/
+```
+
+Then restart lifed.
+
+## Deployment
+
+Each service imports `persona.py` from the `persona/` directory **next to** its own directory:
+- in the repo it is `tools/persona`;
+- on the robot it is `~/persona`;
+- on the brain server it is the directory next to the brain directory.
+
+**Robot (Orange Pi)**:
 
 ```bash
 ssh <robot> 'mkdir -p ~/persona ~/.config/duck'
-scp tools/persona/persona.py tools/persona/example.json <robot>:persona/
+scp tools/persona/persona.py tools/persona/duckspeak.py tools/persona/example.json <robot>:persona/
 scp my-duck.json <robot>:.config/duck/persona.json
 ```
 
-然后重启 lifed、voiced、duckweb。
+Then restart lifed, voiced and duckweb.
 
-**大脑服务器**：把 `persona.py` 和 `example.json` 放到 `duckbrain/` 的同级目录 `persona/`，人设放到运行大脑服务那个用户的 `~/.config/duck/persona.json`，然后重启 duckbrain 和 duckjev。
+**Brain server**: put `persona.py`, `duckspeak.py` and `example.json` in `persona/`, the directory next to `duckbrain/`. Put the persona in `~/.config/duck/persona.json` of the user that runs the brain service, then restart duckbrain and duckjev.
 
-⚠ 新版 duckbrain 和 lifed 少了 `persona/` 目录会直接起不来。**先部署人设，再更新服务。**
+⚠ The new versions of duckbrain and lifed do not start at all if the `persona/` directory or `duckspeak.py` in it is missing. **Deploy the persona first, then update the services.** A persona file written for the Chinese version has a `name_pinyin` field: it is refused now. Rename it to `name_syllables` (or remove it), and write the other text fields in English.
 
-lifed 启动时会在日志里打印 `persona: <名字> (<文件>)`，可以确认用的是哪个人设。
+At start-up lifed prints `persona: <name> (<file>)` in its log, so you can check which persona it uses.

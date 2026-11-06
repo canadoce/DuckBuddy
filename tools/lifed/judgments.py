@@ -12,19 +12,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # Starting thresholds (to be calibrated on the logged judgments, framework §7)
+# RE-CALIBRATE FOR ENGLISH: every number below was set on Chinese utterances (the duck was spoken to
+# in Chinese until the switch to English). They are kept as they were, not guessed again; set them
+# anew from the English lines in duckbrain's judge-log.jsonl once the duck has been talked to for a
+# while (the examples below are those Chinese lines, translated).
 # 2026-10-17, 12 sentences through the real API: for_duck runs low on clear commands said without
-# the name ("拜拜我去忙了" 0.34, "扫一下这个码连网" 0.35, both intent 1.00) and very low on words for
-# someone else ("妈我晚上不回来吃饭" 0.09); garbage is better caught by intent=unclear (0.97-0.99).
+# the name ("bye, I'm off to work" 0.34, "scan this code to get online" 0.35, both intent 1.00) and
+# very low on words for someone else ("Mum, I won't be home for dinner tonight" 0.09); garbage is
+# better caught by intent=unclear (0.97-0.99).
 T_FOR = 0.20          # below this (and no clear command), an utterance not said with the name is not for the duck
 T_CMD_FOR = 0.15      # ... but a command said without the name needs at least this (from the robot,
-                      # "妈我晚上不回来吃饭" came back as intent bye with for_duck 0.06)
+                      # "Mum, I won't be home for dinner tonight" came back as intent bye with for_duck 0.06)
 T_INTENT = 0.70       # a command it was not asked in the command words
 T_WAKE = 0.85         # ... and for one that gets it up
 T_REPLY = 0.60        # how it answers (none / simple / think)
 # Right after the duck has said something, what comes back is most likely an answer to it, however it
-# was heard: "你真棒" after a mission came out "嗯，周棒" / "50到" / "李真大" (2026-10-17), Jev said
-# unclear, and the duck stayed silent three times. Then the brain gets it (it says "没听清" well),
-# and only a near-certain "not for the duck" is dropped.
+# was heard: "you're great" after a mission came out as three garbled lines (2026-10-17), Jev said
+# unclear, and the duck stayed silent three times. Then the brain gets it (it says "I didn't catch
+# that" well), and only a near-certain "not for the duck" is dropped.
 RECENT_S = 12.0
 T_FOR_RECENT = 0.10
 

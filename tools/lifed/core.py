@@ -18,13 +18,20 @@ animation, no voice commands, and a body need that would sit the duck down is on
 from __future__ import annotations
 
 import math
+import os
 import random
 import re
+import sys
 from dataclasses import dataclass, field
 
 import mission
 from attention import Attention
 import prompts
+import words
+
+# duck-speak from English text (tools/persona/duckspeak.py, ~/persona on the robot)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "persona"))
+import duckspeak  # noqa: E402
 
 # ── Body ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -161,13 +168,13 @@ class Inner:
         "rested": (0.05, 0.15, False),
         "woke": (0.20, 0.10, False),
         # the feeling it answered with (the brain's emotion tag) colours how it carries on
-        "开心": (0.15, 0.25, False),
-        "好奇": (0.20, 0.05, False),
-        "撒娇": (0.05, 0.20, False),
-        "害羞": (0.00, 0.10, False),
-        "困": (-0.20, 0.00, False),
-        "难过": (-0.10, -0.25, False),
-        "惊讶": (0.35, 0.05, False),
+        "happy": (0.15, 0.25, False),
+        "curious": (0.20, 0.05, False),
+        "coy": (0.05, 0.20, False),
+        "shy": (0.00, 0.10, False),
+        "sleepy": (-0.20, 0.00, False),
+        "sad": (-0.10, -0.25, False),
+        "surprised": (0.35, 0.05, False),
     }
 
     def tick(self, dt: float, energy: float | None):
@@ -209,70 +216,125 @@ class Action:
 
 STATES = ("OFF", "WAKING", "IDLE", "ATTENDING", "PLAYING", "RESTING", "SLEEPING", "FALLEN", "TIRED")
 
-# words a local intent matcher maps to commands, until voiced brings real ones
+# words a local intent matcher maps to commands, until voiced brings real ones. Phrases match as
+# whole words (words.py: "hi" is not in "this"), and not right after a negation ("don't sit down").
 INTENTS = {
-    "sleep": ("晚安", "睡觉", "去睡", "睡吧", "sleep", "good night"),
-    "wake": ("醒醒", "起床", "早上好", "站起来", "起来", "wake"),
-    # resting is the deep rest too (the user, 2026-10-16: "休息" should let it all go, like sleep)
-    "rest": ("休息", "歇会", "歇一会", "rest"),
-    "sit": ("坐下", "坐好", "坐一下", "sit down"),
-    "greet": ("你好", "嗨", "hello", "hi"),
+    "sleep": ("good night", "goodnight", "night night", "go to sleep", "go sleep", "go to bed", "time to sleep",
+              "time for bed", "bedtime", "sleep now", "sleep time"),
+    "wake": ("wake up", "get up", "stand up", "good morning", "rise and shine", "wakey wakey"),
+    # resting is the deep rest too (the user, 2026-10-16: "rest" should let it all go, like sleep)
+    "rest": ("take a rest", "have a rest", "get some rest", "go rest", "rest now", "rest a bit", "rest for a bit",
+             "rest for a while", "time to rest", "take a break", "have a break"),
+    "sit": ("sit down", "take a seat", "have a seat"),
+    "greet": ("hello", "hi", "hiya", "howdy", "hey there", "good afternoon", "good evening"),
     # the speaker's loudness (lifed: the codec's own volume, kept across restarts)
-    "vol_max": ("最大声", "音量最大", "声音最大", "音量调到最大", "声音开到最大"),
-    "vol_half": ("音量调到一半", "音量一半", "一半音量", "声音调到一半"),
+    "vol_max": ("maximum volume", "max volume", "full volume", "volume to max", "volume to maximum",
+                "volume all the way up", "turn it all the way up", "as loud as you can", "loudest"),
+    "vol_half": ("half volume", "volume to half", "volume at half", "volume to fifty", "half the volume"),
     # louder / quieter: volume_of() below (patterns, not words)
-    # ends the conversation (SenseVoice writes 拜拜 as "88"; not plain "去玩吧": "我们出去玩吧" is no goodbye)
-    "bye": ("再见", "拜拜", "88", "886", "bye", "没事了", "你去玩吧", "不聊了", "回头见"),
+    # ends the conversation (not plain "go play": "let's go play outside" is no goodbye)
+    "bye": ("bye", "goodbye", "good bye", "bye bye", "byebye", "see you later", "see you soon", "see ya",
+            "talk later", "talk to you later", "catch you later", "thats all", "that is all", "nothing else",
+            "you can go play", "off you go"),
     # look: a colour photo to the brain (27B, multimodal), which answers about it (2026-10-17)
-    "look": ("看看这是什么", "看这是什么", "你看这是什么", "这是什么东西", "看看这个", "看一下这个", "你看看",
-             "看看我", "你看到什么", "你看见什么", "你看到了什么", "你看到啥", "看看周围", "你在看什么"),
-    # its phone page's address, read out (before "net": "网页地址" is no scan)
-    "addr": ("网址", "网页地址", "你的地址", "ip地址", "ip是多少", "地址是多少", "网页在哪"),
-    # QR Wi-Fi provisioning (visiond): it looks for the phone's share-hotspot code. Not "上网" — "你能
-    # 上网吗" is a question, not a request.
-    "net": ("连网", "联网", "配网", "连wifi", "连无线", "连接网络", "扫码", "扫一下码"),
-    # only while it is looking for a Wi-Fi code (otherwise "算了" is just talk)
-    "cancel": ("取消", "不连了", "别连了", "不用连了", "不扫了", "别扫了", "停止扫码", "算了"),
+    "look": ("what is this", "whats this", "what is that", "whats that", "look at this", "look at that",
+             "look at me", "what do you see", "what can you see", "what are you looking at", "look around",
+             "can you see this", "take a look", "have a look"),
+    # its phone page's address, read out (before "net": "your web address" is no scan)
+    "addr": ("your address", "web address", "page address", "ip address", "your ip", "your website", "your url",
+             "your web page", "your webpage", "where is your page"),
+    # QR Wi-Fi provisioning (visiond): it looks for the phone's share-hotspot code. Not "go online":
+    # "can you go online" is a question, not a request.
+    "net": ("connect to wifi", "connect to the wifi", "join wifi", "join the wifi", "connect to the internet",
+            "connect to the network", "join the network", "join a network", "set up wifi", "wifi setup",
+            "scan the code", "scan the qr code", "scan this code", "scan qr", "scan a qr code"),
+    # only while it is looking for a Wi-Fi code (otherwise "never mind" is just talk)
+    "cancel": ("cancel", "never mind", "nevermind", "forget it", "stop scanning", "stop looking", "dont connect",
+               "do not connect", "no need"),
 }
+# A greeting only when that is about all that was said: "hey, what's the weather like" is a question
+# for the brain, not a hello.
+INTENT_MAX_WORDS = {"greet": 4}
+# One-word commands that count only as the whole of what was said, give or take a "please" or a
+# "now": "sleep" or "sit please" is a command, "did you sleep well" is not.
+WHOLE = {"sleep": "sleep", "rest": "rest", "sit": "sit", "goodnight": "sleep"}
+WHOLE_FILLERS = {"please", "now", "ok", "okay", "hey", "go", "you", "can", "just", "and", "then", "so", "alright"}
 
 
 # Just after a conversation, the commands that only power things down work without the name, said
-# short: "拜拜…你睡觉吧" (the user, 2026-10-16, was ignored for want of the name). Otherwise a 晚安
-# said to someone else stays theirs. Anything that gets it up always needs the name.
+# short: "bye... go to sleep" (the user, 2026-10-16, was ignored for want of the name). Otherwise a
+# "good night" said to someone else stays theirs. Anything that gets it up always needs the name.
 DOWN_INTENTS = ("sleep", "rest", "sit", "bye")
-DOWN_MAX_CHARS = 6
+DOWN_MAX_WORDS = 5
 AFTER_CONVO_S = 60.0
 
 
-# "声音再小一点" missed the word list and went to the brain, which said it would turn it down and
-# could not (2026-10-17). A complaint says which way first ("声音太小了，声音大一点"); a request needs
-# 点 / 些 or 调: "你的声音好大吗" is a question.
-VOL_DOWN_COMPLAINT = re.compile(r"太大声|声音太大|声音好大啊|太吵|太响")
-VOL_UP_COMPLAINT = re.compile(r"太小声|声音太小|听不清|听不见")
-VOL_UP = re.compile(r"大声一?[点些]|大点声|(声音|音量).{0,2}[大高响]一?[点些]|(声音|音量)(调|开)[大高]")
-VOL_DOWN = re.compile(r"小声一?[点些]|小点声|轻一?点|(声音|音量).{0,2}[小低轻]一?[点些]|(声音|音量)(调|关)[小低]")
+# "turn your voice down a bit" missed the word list and went to the brain, which said it would turn
+# it down and could not (2026-10-17). A complaint says which way first ("you're too quiet, louder
+# please"); a request says what to change: "is your voice loud?" is a question.
+VOL_DOWN_COMPLAINT = re.compile(r"\b(too loud|so loud|too noisy|hurts my ears)\b")
+VOL_UP_COMPLAINT = re.compile(r"\b(too quiet|too soft|(cant|cannot|can not) hear( you)?|hard to hear|barely hear)\b")
+VOL_UP = re.compile(r"\b(louder|speak up|volume up|turn (it |the volume |yourself |your voice )?up|"
+                    r"(raise|increase) (the |your )?volume|more volume)\b")
+VOL_DOWN = re.compile(r"\b(quieter|softer|volume down|turn (it |the volume |yourself |your voice )?down|"
+                      r"(lower|decrease|reduce) (the |your )?volume|less volume|keep it down|not so loud)\b")
 
 
-# a mission's control words, only while there is one to control (otherwise "开始" / "继续" / "停" are talk)
+# a mission's control words, only while there is one to control (otherwise "start" / "continue" /
+# "stop" are talk). "stop" must never be missed: the stopping words match anywhere, even negated.
 MISSION_WORDS = (
-    ("cancel", ("proposed", "running", "paused"), ("取消", "算了", "不走了", "别走了", "不去了")),
-    ("halt", ("running",), ("停", "别动", "站住", "不要动")),
-    ("go", ("proposed",), ("开始", "出发", "走吧", "go")),
-    ("resume", ("paused",), ("继续", "接着走")),
+    ("cancel", ("proposed", "running", "paused"), ("cancel", "never mind", "nevermind", "forget it", "dont go",
+                                                   "do not go", "dont start", "abort", "call it off")),
+    ("halt", ("running",), ("stop", "halt", "freeze", "wait", "hold on", "hold it", "dont move", "do not move",
+                            "stay", "stand still", "whoa", "woah")),
+    ("go", ("proposed",), ("start", "go", "lets go", "go ahead", "begin", "set off")),
+    ("resume", ("paused",), ("continue", "keep going", "go on", "carry on", "resume", "go again")),
 )
+# The words that set it moving ("go", "continue") count only when they are all that was said, give
+# or take these: "okay, go" and "you can start now" start it, "go to sleep" does not.
+MOVE_FILLERS = {"please", "now", "ok", "okay", "alright", "then", "so", "you", "can", "yes", "yeah", "sure",
+                "well", "and", "right", "hey", "again", "walking", "moving"}
 
 
-def mission_word(text: str, state: str | None) -> str | None:
+def _only(ws: list[str], phrases) -> bool:
+    """Whether `ws`, without MOVE_FILLERS, is made of nothing but `phrases` (one or more of them)."""
+    rest = [w for w in ws if w not in MOVE_FILLERS]
+    ps = sorted((words.words(p) for p in phrases), key=len, reverse=True)
+    i = 0
+    while i < len(rest):
+        p = next((p for p in ps if rest[i:i + len(p)] == p), None)
+        if p is None:
+            return False
+        i += len(p)
+    return bool(rest)
+
+
+def _without_name(text: str, name: str) -> list[str]:
+    """The words of `text`, its own name left out (voiced takes it out already; typed text may have it)."""
+    ws, n = words.words(text), words.words(name)
+    if n:
+        for i in range(len(ws) - len(n), -1, -1):
+            if ws[i:i + len(n)] == n:
+                del ws[i:i + len(n)]
+    return ws
+
+
+def mission_word(text: str, state: str | None, name: str = "") -> str | None:
     if state is None:
         return None
-    t = text.lower()
-    for name, states, words in MISSION_WORDS:
-        if state in states and any(w in t for w in words):
-            return name
+    ws = _without_name(text, name)
+    for kind, states, phrases in MISSION_WORDS:
+        if state not in states:
+            continue
+        if kind in ("go", "resume") and _only(ws, phrases):
+            return kind
+        if kind in ("cancel", "halt") and words.any_of(ws, phrases, negatable=False):
+            return kind
     return None
 
 
 def volume_of(t: str) -> str | None:
+    t = " ".join(words.words(t))
     if VOL_DOWN_COMPLAINT.search(t):
         return "quieter"
     if VOL_UP_COMPLAINT.search(t):
@@ -284,20 +346,25 @@ def volume_of(t: str) -> str | None:
     return None
 
 
-def intent_of(text: str) -> str | None:
-    t = text.lower()
-    for name, words in INTENTS.items():
-        if any(w in t for w in words):
+def intent_of(text: str, name: str = "") -> str | None:
+    ws = _without_name(text, name)
+    for name, phrases in INTENTS.items():
+        if len(ws) <= INTENT_MAX_WORDS.get(name, len(ws)) and words.any_of(ws, phrases):
             return name
-    return volume_of(t)
+    core = [w for w in ws if w not in WHOLE_FILLERS]
+    if len(core) == 1 and core[0] in WHOLE:
+        return WHOLE[core[0]]
+    if not core and "hey" in ws:
+        return "greet"                   # "hey!" alone; "hey, stop it" is no hello
+    return volume_of(text)
 
 
 @dataclass
 class Config:
-    # Who it is: its persona's name and knobs (tools/persona; lifed passes them in — Xiaobai, the
-    # user's, is lively and talkative). `lively` livens the idle life (more moves, a higher resting
+    # Who it is: its persona's name and knobs (tools/persona; lifed passes them in — the defaults
+    # here are a lively, talkative duck). `lively` livens the idle life (more moves, a higher resting
     # arousal); `talkative` makes it call out more and sooner.
-    name: str = "小白"
+    name: str = "Biscuit"
     lively: float = 0.8
     talkative: float = 0.8
     rest_energy: float = 0.2          # ask robotd to rest below this energy, standing still
@@ -318,7 +385,7 @@ class Config:
     # Talk to the online brain (tools/duckbrain, through the frp tunnel) about what is said to it.
     # Off, it only nods and takes the command words.
     brain: bool = True
-    think_s: float = 1.2              # still no answer after this: tilt and hum "嗯～" while it thinks
+    think_s: float = 1.2              # still no answer after this: tilt and hum "mm~" while it thinks
     ask_timeout_s: float = 8.0
     # A conversation (the user, 2026-10-16, after xiaozhi's wake flow): its name opens one, and while
     # it lasts what is said is for the duck without saying the name again. It closes once this long
@@ -328,7 +395,7 @@ class Config:
     # estimated from the text
     voice_s: dict = field(default_factory=dict)
     # Missions (mission.py): "off"; "dry" — run on a stand-in robot, nothing moves; "real" — lifed
-    # walks the robot (calibrated odometry, the ToF stop, the pad and "停" over it)
+    # walks the robot (calibrated odometry, the ToF stop, the pad and "stop" over it)
     missions: str = "off"
 
 
@@ -437,22 +504,23 @@ class Life:
         self.dialog = self.dialog[-40:]
 
     QR_SAYS = {
-        # result: (emotion, say, pinyin, pre, gesture, body, meaning)
-        "joined": ("开心", "连上啦！", "lian2 shang4 la5 ！", "chirp", "nod", "bounce", "连上 {ssid} 啦！"),
-        "read": ("开心", "看到了！", "kan4 dao4 le5 ！", "chirp", "nod", "none", "看到 {ssid} 的二维码了。"),
-        "already": ("开心", "连着呢！", "lian2 zhe5 ne5 ！", "chirp", "nod", "none", "我已经连着 {ssid} 啦。"),
-        "joining": ("好奇", "连连看～", "lian2 lian2 kan4 ～", "chirp", "nod", "none", "看到 {ssid} 的二维码了，正在连……"),
-        "not_found": ("难过", "找不到～", "zhao3 bu2 dao4 ～", "coo", "shake", "none", "我找不到 {ssid}……热点开着吗？"),
-        "timeout": ("难过", "没看到～", "mei2 kan4 dao4 ～", "coo", "shake", "none", "我没看到二维码……再试一次吧。"),
-        "not_wifi": ("好奇", "不是网～", "bu2 shi4 wang3 ～", "inquire", "tilt", "none", "这个二维码不是连网用的呀。"),
-        "failed": ("难过", "连不上～", "lian2 bu2 shang4 ～", "coo", "droop", "shrink", "我连不上 {ssid}……密码对吗？"),
+        # result: (emotion, say, pre, gesture, body, meaning); the duck-speak is made from `say`
+        "joined": ("happy", "Connected!", "chirp", "nod", "bounce", "I'm on {ssid} now!"),
+        "read": ("happy", "Got it!", "chirp", "nod", "none", "I can see the QR code for {ssid}."),
+        "already": ("happy", "Already on!", "chirp", "nod", "none", "I'm already on {ssid}."),
+        "joining": ("curious", "Let's see~", "chirp", "nod", "none", "I can see the QR code for {ssid}. Connecting..."),
+        "not_found": ("sad", "Can't find it~", "coo", "shake", "none", "I can't find {ssid}... is the hotspot on?"),
+        "timeout": ("sad", "Didn't see it~", "coo", "shake", "none", "I didn't see a QR code... let's try again."),
+        "not_wifi": ("curious", "Not Wi-Fi~", "inquire", "tilt", "none", "This QR code is not for joining a network."),
+        "failed": ("sad", "Can't connect~", "coo", "droop", "shrink", "I can't connect to {ssid}... is the password right?"),
     }
 
     def _qr_expression(self, ev: dict) -> dict:
         r = ev.get("result", "failed")
-        emotion, say, pinyin, pre, gesture, body, meaning = self.QR_SAYS.get(r, self.QR_SAYS["failed"])
-        return {"emotion": emotion, "say": say, "pinyin": pinyin, "pre": pre, "gesture": gesture, "body": body,
-                "action": "none", "meaning": meaning.format(ssid=ev.get("ssid") or "那个网"), "via": "vision",
+        emotion, say, pre, gesture, body, meaning = self.QR_SAYS.get(r, self.QR_SAYS["failed"])
+        return {"emotion": emotion, "say": say, "pinyin": duckspeak.syllables(say), "pre": pre, "gesture": gesture,
+                "body": body, "action": "none", "meaning": meaning.format(ssid=ev.get("ssid") or "that network"),
+                "via": "vision",
                 "voice": r if r in prompts.PROMPTS else None,
                 # on a phone's hotspot its page has an address you cannot know: it reads it out
                 "then": "address" if r == "joined" else None}
@@ -520,25 +588,29 @@ class Life:
                 # words count only when meant for the duck: said with its name, or in a conversation
                 ev = {**ev, "addressed": self._addressed(ev)}
                 text = ev.get("text", "")
-                intent = intent_of(text)
+                intent = intent_of(text, self.cfg.name)
                 if intent == "cancel" and self.scanning_since is None:
                     intent = None
-                if self.t < self.voice_until + 0.8 and not ev.get("named"):
+                clip_playing = self.t < self.voice_until + 0.8 and not ev.get("named")
+                if clip_playing:
                     # while a person's-voice clip plays (they have command words in them, duck-speak has
                     # none), what it hears without its name is the clip (2026-10-17: reading its address,
-                    # it heard "网页地址是" and started over, three times)
+                    # it heard "my page address is" and started over, three times)
                     intent = None
                 after = self.t - self.convo_ended < AFTER_CONVO_S
                 if not ev["addressed"] and not (after and intent in DOWN_INTENTS
-                                                and len(text.strip(" ，,。.！!？?～~")) <= DOWN_MAX_CHARS):
+                                                and len(words.words(text)) <= DOWN_MAX_WORDS):
                     intent = None
-                # a mission: its control words while one is on ("停" without the name too), a route
-                if self.cfg.missions != "off" and not (self.t < self.voice_until + 0.8 and not ev.get("named")):
-                    ctl = mission_word(text, self.mission_state)
+                # a mission: its control words while one is on ("stop" without the name too, and even
+                # while a clip plays: no clip says it), a route
+                if self.cfg.missions != "off":
+                    ctl = mission_word(text, self.mission_state, self.cfg.name)
+                    if clip_playing and ctl != "halt":
+                        ctl = None
                     if ctl and (ev["addressed"] or ctl == "halt"):
                         self._mission_control(ctl, text, body, out)
                         continue
-                    route = mission.parse_route(text) if ev["addressed"] else None
+                    route = mission.parse_route(text) if ev["addressed"] and not clip_playing else None
                     if route is not None:
                         self._mission_route(route, text, body, out)
                         continue
@@ -568,14 +640,14 @@ class Life:
                 continue
             if kind == "volume":
                 # the phone page's slider
-                self._volume(out, {"set": int(ev.get("set", 100))}, f"声音调到 {int(ev.get('set', 100))}。")
+                self._volume(out, {"set": int(ev.get("set", 100))}, f"Volume set to {int(ev.get('set', 100))}.")
                 continue
             if kind == "qr":
-                # visiond's answer to "连网": said by the duck, not the brain ("joining": still at it)
+                # visiond's answer to "connect to Wi-Fi": said by the duck, not the brain ("joining": still at it)
                 if ev.get("result") != "joining":
                     self.scanning_since = None
                 if ev.get("result") in ("cancelled", "busy"):
-                    continue                 # said already ("好的，不连了") / still at the first one
+                    continue                 # said already ("Okay, I won't connect") / still at the first one
                 self._perform(self._qr_expression(ev), body, out)
                 continue
             if self.pad and kind in ("command", "say"):
@@ -590,7 +662,7 @@ class Life:
                 self.thinking_cued = True
                 if not self.pad:
                     self._gesture(out, "tilt", body, side=self.rng.choice((-1, 1)))
-                out.append(Action("speak", {"pinyin": "n1 ～", "mood": "curious"}))
+                out.append(Action("speak", {"pinyin": "n1 ~", "mood": "curious"}))
                 self.deaf_until = max(self.deaf_until, self.t + 1.5)
             if waited > self.cfg.ask_timeout_s:
                 self.asking_since = None
@@ -632,7 +704,7 @@ class Life:
 
     def _mind_own_voice(self, out):
         """Whatever it makes a sound, it does not take the next moment's hearing for someone
-        talking to it (2026-10-15: its own answering quack came back as "啊", inside the
+        talking to it (2026-10-15: its own answering quack came back as "ah", inside the
         addressed window, and went to the brain as a question)."""
         if any(a.kind == "sound" for a in out):
             self.deaf_until = max(self.deaf_until, self.t + self.OWN_SOUND_DEAF_S)
@@ -668,7 +740,7 @@ class Life:
                 self.pending_wake = True
                 self._go("WAKING", "told to wake")
             elif name == "wake" and self.state in ("IDLE", "ATTENDING") and body.posture == "sitting":
-                out.append(Action("skill", {"skill": "sit_toggle"}))      # 站起来, from a powered sit
+                out.append(Action("skill", {"skill": "sit_toggle"}))      # "stand up", from a powered sit
             elif name == "rest" and self.state in ("IDLE", "ATTENDING", "RESTING"):
                 self._sound(out, "coo", prompted=True)
                 out.append(Action("rest", {"on": True, "deep": self.cfg.deep_ok}))
@@ -681,9 +753,9 @@ class Life:
             elif name == "cancel" and self.scanning_since is not None:
                 out.append(Action("vision", {"cmd": "stop"}))
                 self.scanning_since = None
-                self._perform({"emotion": "好奇", "say": "好～", "pinyin": "hao3 ～", "pre": "none",
+                self._perform({"emotion": "curious", "say": "Okay~", "pinyin": duckspeak.syllables("Okay~"), "pre": "none",
                                "gesture": "nod", "body": "none", "action": "none", "voice": "cancelled",
-                               "meaning": "好的，不连了。", "via": "vision"}, body, out)
+                               "meaning": "Okay, I won't connect.", "via": "vision"}, body, out)
             elif name in self.VOLUME_SAYS:
                 args, meaning = self.VOLUME_SAYS[name]
                 self._volume(out, args, meaning)
@@ -698,24 +770,25 @@ class Life:
                     self.att.observe(self.t, "object", hy, self._heading(body), el=0.2, salience=1.6)
                     self._gaze(out, body, hy, 0.2, 8.0)
                     self._sound(out, "inquire", prompted=True)
-                    out.append(Action("look", {"text": ev.get("text") or "你看到了什么？",
+                    out.append(Action("look", {"text": ev.get("text") or "What do you see?",
                                                "session": f"c{self.convo_id}"}))
                     self.asking_since, self.thinking_cued = self.t, False
-                    self._dialog("duck", "我看看～", meaning="让我看看。", via="vision")
+                    self._dialog("duck", "Let me see~", meaning="Let me have a look.", via="vision")
             elif name == "addr":
-                out.append(Action("voice", {"clip": "address", "pinyin": "", "mood": "开心"}))
+                out.append(Action("voice", {"clip": "address", "pinyin": "", "mood": "happy"}))
                 self._voice_heard("address", 0.0)
-                self._dialog("duck", "（念网址）", meaning="我把网页地址念给你听。", via="vision")
+                self._dialog("duck", "(reads out its address)", meaning="Here is my page address.", via="vision")
             elif name == "net" and body.posture != "walking" and self.scanning_since is None:
                 # look up at the phone and say so; visiond scans and answers with a `qr` event
                 out.append(Action("vision", {"cmd": "scan_qr", "timeout_s": 30.0}))
                 # what to do is said in a person's words (prompts.py); duck-speak without the clip
-                out.append(Action("voice", {"clip": "scan_start", "pinyin": "wo3 kan4 kan5 ～", "mood": "好奇"}))
+                out.append(Action("voice", {"clip": "scan_start", "pinyin": duckspeak.syllables("Let me see~"),
+                                            "mood": "curious"}))
                 self._voice_heard("scan_start", 0.0)
                 if body.head_free and not self.pad:
                     self._gaze(out, body, 0.0, 0.35, 30.0)
                 self.scanning_since = self.t
-                self._dialog("duck", "我看看～", meaning="让我看看你的二维码。", via="vision")
+                self._dialog("duck", "Let me see~", meaning="Let me see your QR code.", via="vision")
             elif name == "quiet":
                 self.cfg.quiet = True
             elif name == "unquiet":
@@ -814,7 +887,7 @@ class Life:
         self.asking_since = None
         self.last_reply = e
         self.last_spoke = self.t
-        mood = e.get("emotion") or "开心"
+        mood = e.get("emotion") or "happy"
         self.inner.impulse(mood)
         self.last_interaction = self.t
         delay = 0.0
@@ -824,7 +897,7 @@ class Life:
             out.append(Action("sound", {"tag": pre}))
             delay = 0.45
         syllables = sum(1 for w in (e.get("pinyin") or "").split() if w[-1:].isdigit())
-        self.saying_name = self.cfg.name in (e.get("say") or "")
+        self.saying_name = words.has(words.words(e.get("say") or ""), self.cfg.name, negatable=False)
         if e.get("voice"):
             # a moment that needs instructions: a person's words (prompts.py), duck-speak without the clip
             out.append(Action("voice", {"clip": e["voice"], "pinyin": e.get("pinyin", ""), "mood": mood,
@@ -837,7 +910,7 @@ class Life:
             out.append(Action("speak", {"pinyin": e["pinyin"], "mood": mood, "delay_s": delay}))
         self.deaf_until = max(self.deaf_until, self.t + delay + 0.25 * syllables + 1.2)
         if self.in_convo() and e.get("end") is True:
-            # the brain heard a farewell ("那我去忙啦"): the conversation ends once it has said bye
+            # the brain heard a farewell ("I'm off to work then"): the conversation ends once it has said bye
             self.convo_until = self.deaf_until
             self.quiet_close = True
         elif self.in_convo():
@@ -846,7 +919,7 @@ class Life:
         g = self.GESTURE_OF.get(e.get("gesture") or "")
         b = self.BODY_OF.get(e.get("body") or "")
         if g == "nod":
-            self._gesture(out, "nod", body, times=2 if mood in ("开心", "惊讶") else 1)
+            self._gesture(out, "nod", body, times=2 if mood in ("happy", "surprised") else 1)
         elif g == "shake":
             self._gesture(out, "shake", body, times=2)
         elif g == "tilt":
@@ -865,8 +938,8 @@ class Life:
             elif act == "stand" and awake and body.posture == "sitting":
                 out.append(Action("skill", {"skill": "sit_toggle"}))
             elif act in ("stand", "wake") and self.state in ("SLEEPING", "RESTING"):
-                # Getting up powers the legs: only the command words do that (醒醒 / 起来 / 站起来 ...),
-                # never the brain's own reading of a sentence. 2026-10-16: "怎么了呀" to the sleeping
+                # Getting up powers the legs: only the command words do that (wake up / get up / stand up
+                # ...), never the brain's own reading of a sentence. 2026-10-16: "what's wrong?" to the sleeping
                 # duck came back as wake, and it stood up — on a leg half rebuilt — and fell 3 times.
                 self._note(f"{self.t:8.1f}s brain asked {act!r} from {self.state}: only the wake words get it up")
             elif {"rest": awake, "sleep": self.state not in ("SLEEPING", "OFF")}.get(act, False):
@@ -878,10 +951,10 @@ class Life:
                      **({"photo": e["photo"]} if e.get("photo") else {}))
 
     VOLUME_SAYS = {
-        "louder": ({"step": 15}, "好，大声一点。"),
-        "quieter": ({"step": -15}, "好，小声一点。"),
-        "vol_max": ({"set": 100}, "开到最大声。"),
-        "vol_half": ({"set": 50}, "调到一半。"),
+        "louder": ({"step": 15}, "Okay, a bit louder."),
+        "quieter": ({"step": -15}, "Okay, a bit quieter."),
+        "vol_max": ({"set": 100}, "All the way up."),
+        "vol_half": ({"set": 50}, "Half volume."),
     }
 
     def _volume(self, out, args: dict, meaning: str):
@@ -890,11 +963,11 @@ class Life:
         self.last_sound = self.t
         out.append(Action("sound", {"tag": "chirp"}))
         self.deaf_until = max(self.deaf_until, self.t + self.OWN_SOUND_DEAF_S)
-        self._dialog("duck", "啾～", emotion="开心", meaning=meaning, via="vision")
+        self._dialog("duck", "Chirp~", emotion="happy", meaning=meaning, via="vision")
 
     # missions: the words and the reports (lifed runs it: mission.py) ------------------------------
 
-    def _clip(self, out, body, key: str, meaning: str, emotion: str = "开心", gesture: str = "none"):
+    def _clip(self, out, body, key: str, meaning: str, emotion: str = "happy", gesture: str = "none"):
         self._perform({"emotion": emotion, "say": "", "pinyin": "", "pre": "none", "gesture": gesture,
                        "body": "none", "action": "none", "voice": key, "meaning": meaning, "via": "mission"}, body, out)
 
@@ -904,21 +977,22 @@ class Life:
         if route.problem:
             # unclear or out of bounds: ask, or say why not, in a person's words
             key = {"turn_or_side": "ask_turn_or_side", "how_far": "ask_how_far"}.get(route.problem, route.problem)
-            self._clip(out, body, key, prompts.PROMPTS.get(key, ""), emotion="好奇", gesture="tilt")
+            self._clip(out, body, key, prompts.PROMPTS.get(key, ""), emotion="curious", gesture="tilt")
             return
         moves = any(s.skill in ("walk", "turn") for s in route.steps)
         if self.cfg.missions == "real" and moves and body.posture not in ("standing", "walking"):
             # walking needs it up first, and only the name and the wake words get it up
-            self._clip(out, body, "mission_need_stand", prompts.PROMPTS["mission_need_stand"], emotion="好奇")
+            self._clip(out, body, "mission_need_stand", prompts.PROMPTS["mission_need_stand"], emotion="curious")
             return
         if self.mission_state in ("running", "paused"):
             out.append(Action("mission", {"cmd": "cancel"}))
         out.append(Action("mission", {"cmd": "propose", "text": text, "steps": route.steps}))
         self.mission_state = "proposed"
-        words = " → ".join(s.words() for s in route.steps)
+        said = " → ".join(s.words() for s in route.steps)
         dry = self.cfg.missions == "dry"
         self._clip(out, body, "mission_ready_dry" if dry else "mission_ready",
-                   f"我要：{words}。{'（演练，不会真的动）' if dry else ''}说「开始」我就出发。", gesture="nod")
+                   f"I will: {said}.{' (A dry run: I will not really move.)' if dry else ''} Say \"start\" and I will set off.",
+                   gesture="nod")
 
     def _mission_control(self, ctl: str, text: str, body, out):
         self._dialog("you", text, command=ctl)
@@ -926,8 +1000,8 @@ class Life:
         if ctl == "go":
             out.append(Action("mission", {"cmd": "start"}))
             self.mission_state = "running"
-            self._perform({"emotion": "开心", "say": "出发！", "pinyin": "chu1 fa1 ！", "pre": "chirp",
-                           "gesture": "nod", "body": "none", "action": "none", "meaning": "出发！",
+            self._perform({"emotion": "happy", "say": "Let's go!", "pinyin": duckspeak.syllables("Let's go!"),
+                           "pre": "chirp", "gesture": "nod", "body": "none", "action": "none", "meaning": "Off I go!",
                            "via": "mission"}, body, out)
         elif ctl == "halt":
             out.append(Action("mission", {"cmd": "pause", "why": "told"}))
@@ -936,8 +1010,9 @@ class Life:
         elif ctl == "resume":
             out.append(Action("mission", {"cmd": "resume"}))
             self.mission_state = "running"
-            self._perform({"emotion": "开心", "say": "好！", "pinyin": "hao3 ！", "pre": "chirp", "gesture": "nod",
-                           "body": "none", "action": "none", "meaning": "接着走。", "via": "mission"}, body, out)
+            self._perform({"emotion": "happy", "say": "Okay!", "pinyin": duckspeak.syllables("Okay!"), "pre": "chirp",
+                           "gesture": "nod", "body": "none", "action": "none", "meaning": "Carrying on.",
+                           "via": "mission"}, body, out)
         elif ctl == "cancel":
             out.append(Action("mission", {"cmd": "cancel"}))
             self.mission_state = None
@@ -946,26 +1021,27 @@ class Life:
     def _mission_event(self, ev: dict, body, out):
         what = ev.get("what")
         if what == "step_done":
-            self._dialog("duck", "", emotion="开心", meaning=f"✓ {ev.get('words', '')}"
-                         + (f"（{ev['note']}）" if ev.get("note") else ""), via="mission")
+            self._dialog("duck", "", emotion="happy", meaning=f"✓ {ev.get('words', '')}"
+                         + (f" ({ev['note']})" if ev.get("note") else ""), via="mission")
         elif what == "done":
             self.mission_state = None
-            self._clip(out, body, "mission_done", f"完成啦：{ev.get('words', '')}", gesture="nod")
+            self._clip(out, body, "mission_done", f"All done: {ev.get('words', '')}", gesture="nod")
         elif what == "failed":
             self.mission_state = None
-            self._clip(out, body, "mission_failed", f"「{ev.get('words', '')}」没做到（{ev.get('why', '')}），我先停下了。",
-                       emotion="难过", gesture="shake")
+            self._clip(out, body, "mission_failed",
+                       f"I could not do \"{ev.get('words', '')}\" ({ev.get('why', '')}), so I stopped.",
+                       emotion="sad", gesture="shake")
         elif what == "paused":
             self.mission_state = "paused"
             if ev.get("why") == "obstacle":
-                self._clip(out, body, "mission_obstacle", prompts.PROMPTS["mission_obstacle"], emotion="惊讶")
+                self._clip(out, body, "mission_obstacle", prompts.PROMPTS["mission_obstacle"], emotion="surprised")
             else:
-                self._clip(out, body, "mission_paused", f"我停下了（{ev.get('why', '')}）。说继续，我就接着走。")
+                self._clip(out, body, "mission_paused", f"I stopped ({ev.get('why', '')}). Say continue and I will keep going.")
 
     def _voice_heard(self, key: str, delay: float):
         """A clip starts in `delay` s: deaf to itself while it plays, and its words known (_own_clip)."""
         s = self.cfg.voice_s.get(key) or prompts.seconds(key)
-        self.voice_text = (prompts.PROMPTS["addr_intro"] + prompts.PROMPTS["addr_port"] if key == "address"
+        self.voice_text = (prompts.PROMPTS["addr_intro"] + " " + prompts.PROMPTS["addr_port"] if key == "address"
                            else prompts.PROMPTS.get(key, ""))
         self.voice_until = self.t + delay + s + 0.6      # + the hush round trip and aplay's start
         self.deaf_until = max(self.deaf_until, self.voice_until + 0.8)
@@ -973,33 +1049,35 @@ class Life:
     def _answer_to_clip(self, text: str) -> bool:
         """A word the clip asked for, said back on its own a moment after the clip: the person, not the
         echo. An echo comes in under a second after the clip ends (the recogniser's lag) and is a phrase
-        of it ("……说开始就出发"); someone answering takes longer and says just the word ("开始": dropped
-        as the echo 1.0 s after "说开始就出发", 2026-10-17)."""
-        t = re.sub(r"[^a-z一-鿿]", "", text.lower())
-        if len(t) > 4 or self.t < self.voice_until + 0.4:
+        of it ("... say start and I will set off"); someone answering takes longer and says just the
+        word ("start": dropped as the echo 1.0 s after "say start", 2026-10-17)."""
+        ws = [w for w in words.words(text) if not w.isdigit()]
+        if len(ws) > 3 or self.t < self.voice_until + 0.4:
             return False
-        if mission_word(text, self.mission_state) is not None:
+        if mission_word(text, self.mission_state, self.cfg.name) is not None:
             return True
-        return self.scanning_since is not None and intent_of(text) == "cancel"
+        return self.scanning_since is not None and intent_of(text, self.cfg.name) == "cancel"
 
     def _own_clip(self, text: str) -> bool:
-        """Heard soon after a clip, and mostly its words: the clip coming back through the mic.
-        (2026-10-17: "不想连了，取消了吧", said after the clip, shares only "不想连了" with it.)"""
+        """Heard soon after a clip, and mostly its words (word pairs in the clip's order): the clip
+        coming back through the mic. (2026-10-17: "I don't want to connect, cancel it", said after
+        the clip, shares only single words with it.)"""
         if not self.voice_text or self.t > self.voice_until + 4.0:
             return False
-        # digits as the recogniser writes them ("<robot-ip>") are not in a clip's words: left out
-        # (the address came back as "...<robot-ip>，冒号8088..." and its "88" closed the conversation)
-        t = re.sub(r"[^a-z一-鿿]", "", text.lower())
-        clip = re.sub(r"[^0-9a-z一-鿿]", "", self.voice_text.lower())
-        if not t:
+        # numbers as the recogniser writes them ("<robot-ip>", "8088") are not in a clip's words: left
+        # out (the address came back as "...<robot-ip>, colon 8088..." and closed the conversation)
+        ws = [w for w in words.words(text) if not w.isdigit()]
+        clip = words.words(self.voice_text)
+        if not ws:
             return False
-        if len(t) < 4:
-            return t in clip and self.t < self.voice_until + 1.5
-        covered = [False] * len(t)
-        for i in range(len(t) - 3):
-            if t[i:i + 4] in clip:
-                covered[i:i + 4] = [True] * 4
-        return sum(covered) >= 0.6 * len(t)
+        if len(ws) < 2:
+            return ws[0] in clip and self.t < self.voice_until + 1.5
+        pairs = set(zip(clip, clip[1:]))
+        covered = [False] * len(ws)
+        for i in range(len(ws) - 1):
+            if (ws[i], ws[i + 1]) in pairs:
+                covered[i] = covered[i + 1] = True
+        return sum(covered) >= 0.6 * len(ws)
 
     @staticmethod
     def _heard_yaw(ev: dict, body) -> float:

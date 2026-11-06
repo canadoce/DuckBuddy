@@ -6,7 +6,9 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import Body, Config, Life, intent_of  # noqa: E402
+from core import Body, Config, Life, intent_of, mission_word  # noqa: E402
+import duckspeak  # noqa: E402  (tools/persona, put on the path by core)
+import words  # noqa: E402
 
 DT = 0.1
 
@@ -48,7 +50,7 @@ class LifeTest(unittest.TestCase):
         self.assertTrue(kinds(acts, "gaze") or kinds(acts, "gesture"), "an idle duck moves now and then")
 
     def test_it_never_asks_for_power_or_walking(self):
-        acts = run(self.life, standing(), 600, [{"type": "say", "text": "你好"}])
+        acts = run(self.life, standing(), 600, [{"type": "say", "text": "hello"}])
         self.assertTrue({a.kind for a in acts} <= {"gaze", "gaze_stop", "gesture", "sound", "rest", "wake", "vision"})
 
     def test_a_call_turns_the_head_and_attends(self):
@@ -63,7 +65,7 @@ class LifeTest(unittest.TestCase):
 
     def test_sleep_lies_down_deep_and_wake_gets_up(self):
         run(self.life, standing(), 6)
-        acts = run(self.life, standing(), 0.2, [{"type": "say", "text": "晚安"}])
+        acts = run(self.life, standing(), 0.2, [{"type": "say", "text": "good night"}])
         self.assertEqual(self.life.state, "SLEEPING")
         self.assertEqual(kinds(acts, "rest")[0].args, {"on": True, "deep": True})
         lying = Body(policy="lie", rest={"phase": "resting", "deep": True}, temps_c=[40.0] * 15)
@@ -96,12 +98,12 @@ class LifeTest(unittest.TestCase):
     def test_the_pad_leads_voice_waits_and_the_pad_interrupts(self):
         run(self.life, standing(), 6)
         driving = standing(pad_present=True, pad_active=True)
-        acts = run(self.life, driving, 30, [{"type": "say", "text": "休息一下"}])
+        acts = run(self.life, driving, 30, [{"type": "say", "text": "take a rest"}])
         self.assertEqual(self.life.state, "IDLE", "a voice ask waits while the pad is in use")
         self.assertFalse(kinds(acts, "rest") + kinds(acts, "gesture"), "nothing moves under the pad")
         # pad idle: voice is carried out
         idle_pad = standing(pad_present=True, pad_active=False)
-        acts = run(self.life, idle_pad, 0.2, [{"type": "say", "text": "休息一下"}])
+        acts = run(self.life, idle_pad, 0.2, [{"type": "say", "text": "take a rest"}])
         self.assertEqual(self.life.state, "RESTING")
         self.assertTrue(self.life.own_rest)
         # the pad moves: the rest this layer asked for ends at once
@@ -167,17 +169,17 @@ class LifeTest(unittest.TestCase):
 
     def test_overheard_words_are_not_commands(self):
         run(self.life, standing(), 6)
-        run(self.life, standing(), 0.2, [{"type": "say", "text": "晚安", "addressed": False}])
+        run(self.life, standing(), 0.2, [{"type": "say", "text": "good night", "addressed": False}])
         self.assertNotEqual(self.life.state, "SLEEPING", "said to someone else")
         acts = run(self.life, standing(), 0.2, [{"type": "call", "yaw": 0.0},
-                                                 {"type": "say", "text": "晚安", "addressed": True}])
+                                                 {"type": "say", "text": "good night", "addressed": True}])
         self.assertEqual(self.life.state, "SLEEPING")
 
     def test_intents(self):
-        self.assertEqual(intent_of("晚安啦"), "sleep")
-        self.assertEqual(intent_of("醒醒"), "wake")
-        self.assertEqual(intent_of("你坐下歇会儿吧"), "rest")
-        self.assertIsNone(intent_of("今天天气不错"))
+        self.assertEqual(intent_of("good night!"), "sleep")
+        self.assertEqual(intent_of("wake up"), "wake")
+        self.assertEqual(intent_of("you can take a break now"), "rest")
+        self.assertIsNone(intent_of("nice weather today"))
 
 
 class ConversationTest(unittest.TestCase):
@@ -188,43 +190,43 @@ class ConversationTest(unittest.TestCase):
         run(self.life, standing(), 8)             # awake and idle
 
     def test_it_asks_the_brain_and_hums_while_it_thinks(self):
-        # (a command word — 你好, 睡觉 — is taken here, without the brain)
-        acts = run(self.life, standing(), 0.5, [{"type": "say", "text": "今天玩什么", "addressed": True}])
-        self.assertEqual([a.args["text"] for a in kinds(acts, "ask")], ["今天玩什么"])
+        # (a command word — hello, go to sleep — is taken here, without the brain)
+        acts = run(self.life, standing(), 0.5, [{"type": "say", "text": "what shall we play today", "addressed": True}])
+        self.assertEqual([a.args["text"] for a in kinds(acts, "ask")], ["what shall we play today"])
         self.assertTrue(any(a.args.get("name") == "nod" for a in kinds(acts, "gesture")), "a nod: heard you")
         acts = run(self.life, standing(), 1.5)
-        self.assertEqual([a.args["pinyin"] for a in kinds(acts, "speak")], ["n1 ～"], "thinking, aloud")
+        self.assertEqual([a.args["pinyin"] for a in kinds(acts, "speak")], ["n1 ~"], "thinking, aloud")
         # not addressed: no question to the brain
-        acts = run(self.life, standing(), 3, [{"type": "say", "text": "今天下雨", "addressed": False}])
+        acts = run(self.life, standing(), 3, [{"type": "say", "text": "it is raining today", "addressed": False}])
         self.assertEqual(kinds(acts, "ask"), [])
 
     def test_the_answer_is_a_call_then_duck_speak_and_a_gesture_and_it_does_not_hear_itself(self):
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "今天玩什么", "addressed": True}])
-        reply = {"type": "reply", "emotion": "开心", "say": "好呀！", "pinyin": "hao3 ya5 ！", "pre": "greet",
-                 "gesture": "nod", "body": "bounce", "action": "none", "meaning": "你好呀"}
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "what shall we play today", "addressed": True}])
+        reply = {"type": "reply", "emotion": "happy", "say": "Yay!", "pinyin": "yei4 !", "pre": "greet",
+                 "gesture": "nod", "body": "bounce", "action": "none", "meaning": "hello there"}
         acts = run(self.life, standing(), 0.3, [reply])
         self.assertEqual([a.args["tag"] for a in kinds(acts, "sound")], ["greet"])
         speak = kinds(acts, "speak")
         self.assertEqual(len(speak), 1)
-        self.assertEqual((speak[0].args["pinyin"], speak[0].args["mood"]), ("hao3 ya5 ！", "开心"))
+        self.assertEqual((speak[0].args["pinyin"], speak[0].args["mood"]), ("yei4 !", "happy"))
         self.assertGreater(speak[0].args["delay_s"], 0.0, "the call first, then the words")
         self.assertTrue(kinds(acts, "gesture"))
         self.assertFalse(self.life.snapshot(standing())["asking"])
         # its own quacks, transcribed, while it is still speaking: not a question
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "嘎嘎", "addressed": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Quack quack", "addressed": True}])
         self.assertEqual(kinds(acts, "ask"), [])
 
     def test_its_own_call_is_not_someone_talking(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "call", "text": "小白"}])
+        acts = run(self.life, standing(), 0.3, [{"type": "call", "text": "Biscuit"}])
         self.assertTrue(kinds(acts, "sound"), "it answers a call with a call")
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "啊", "addressed": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Ah", "addressed": True}])
         self.assertEqual(kinds(acts, "ask"), [], "its own call, heard back")
         acts = run(self.life, standing(), 2.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "你在干嘛", "addressed": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "what are you doing", "addressed": True}])
         self.assertEqual(len(kinds(acts, "ask")), 1)
 
     def test_the_brain_sits_and_stands_it_only_from_where_that_makes_sense(self):
-        sit = {"type": "reply", "emotion": "开心", "say": "好", "pinyin": "hao3", "pre": "none", "gesture": "nod"}
+        sit = {"type": "reply", "emotion": "happy", "say": "Okay", "pinyin": "hao3", "pre": "none", "gesture": "nod"}
         acts = run(self.life, standing(), 0.3, [{**sit, "action": "sit"}])
         self.assertEqual([a.args["skill"] for a in kinds(acts, "skill")], ["sit_toggle"])
         seated = Body(policy="sit", temps_c=[40.0] * 15, battery_pct=80.0)
@@ -237,28 +239,28 @@ class ConversationTest(unittest.TestCase):
         self.assertEqual(kinds(acts, "skill"), [], "not mid-stride")
 
     def test_the_brain_cannot_wake_a_duck_that_is_not_asleep(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "惊讶", "say": "哇", "pinyin": "wa5",
+        acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "surprised", "say": "Wow", "pinyin": "wa5",
                                                  "pre": "none", "gesture": "look_up", "action": "wake"}])
         self.assertEqual(kinds(acts, "wake"), [])
         self.assertEqual(self.life.state in ("IDLE", "ATTENDING"), True)
-        acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "困", "say": "嗯", "pinyin": "n2",
+        acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "sleepy", "say": "Mm", "pinyin": "n2",
                                                  "pre": "none", "gesture": "droop", "action": "sleep"}])
         self.assertEqual(self.life.state, "SLEEPING")
         self.assertTrue(kinds(acts, "rest"))
         # asleep, the brain cannot get it up either: only the wake words power the legs (2026-10-16:
-        # "怎么了呀" came back as wake and the duck stood up on a half-rebuilt leg)
+        # "what's wrong?" came back as wake and the duck stood up on a half-rebuilt leg)
         for act in ("wake", "stand"):
-            acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "困", "say": "嗯", "pinyin": "n2",
+            acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "sleepy", "say": "Mm", "pinyin": "n2",
                                                      "pre": "none", "gesture": "droop", "action": act}])
             self.assertEqual(kinds(acts, "wake"), [], act)
             self.assertEqual(self.life.state, "SLEEPING", act)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "醒醒", "addressed": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "wake up", "addressed": True}])
         self.assertTrue(kinds(acts, "wake"), "the wake words still do")
 
 
 class CommandWordsTest(unittest.TestCase):
-    """休息 lets it all go like sleep; 坐下 / 站起来 with the power on; and the commands that only
-    power things down work without its name when said short (the user, 2026-10-16)."""
+    """"take a rest" lets it all go like sleep; "sit down" / "stand up" with the power on; and the commands
+    that only power things down work without its name when said short (the user, 2026-10-16)."""
 
     def setUp(self):
         self.life = Life(Config(deep_ok=True), random.Random(1))
@@ -268,91 +270,95 @@ class CommandWordsTest(unittest.TestCase):
         return run(self.life, body or standing(), secs, [{"type": "say", "text": text, "addressed": addressed, "named": addressed}])
 
     def test_rest_is_the_deep_rest(self):
-        acts = self.say("小白你休息吧", True)
+        acts = self.say("Biscuit, take a rest", True)
         self.assertEqual([a.args for a in kinds(acts, "rest")], [{"on": True, "deep": True}])
         self.assertEqual(self.life.state, "RESTING")
 
     def test_after_a_goodbye_short_power_down_words_need_no_name(self):
-        self.assertEqual(kinds(self.say("你睡觉吧", False), "rest"), [], "out of the blue, it needs its name")
+        self.assertEqual(kinds(self.say("go to sleep", False), "rest"), [], "out of the blue, it needs its name")
         run(self.life, standing(), 1.5, [{"type": "call", "yaw": 0.0}])
-        self.say("拜拜了，再见", False, secs=17.0)      # the user's 2026-10-16 evening, 17 s apart
-        acts = self.say("你睡觉吧", False)
+        self.say("bye bye, see you later", False, secs=17.0)      # the user's 2026-10-16 evening, 17 s apart
+        acts = self.say("go to sleep", False)
         self.assertEqual(self.life.state, "SLEEPING")
         self.assertEqual([a.args.get("deep") for a in kinds(acts, "rest")], [True])
         self.assertFalse(self.life.in_convo(), "a command to sleep is no conversation")
 
     def test_a_long_sentence_or_getting_up_still_needs_the_name(self):
-        acts = self.say("我昨天晚上很晚才去睡觉的", False)
+        acts = self.say("last night I had to go to bed really late again", False)
         self.assertEqual(kinds(acts, "rest"), [])
         self.assertIn(self.life.state, ("IDLE", "ATTENDING"))
-        self.say("睡觉", True)
-        acts = self.say("起来", False)
+        self.say("go to sleep", True)
+        acts = self.say("get up", False)
         self.assertEqual(kinds(acts, "wake"), [], "unnamed, nothing gets it up")
-        acts = self.say("小白起来", True)
+        acts = self.say("Biscuit, get up", True)
         self.assertTrue(kinds(acts, "wake"))
 
     def test_sit_down_and_stand_up_with_the_power_on(self):
-        acts = self.say("坐下", True)
+        acts = self.say("sit down", True)
         self.assertEqual([a.args for a in kinds(acts, "skill")], [{"skill": "sit_toggle"}])
         sitting = Body(policy="sit", temps_c=[40.0] * 15, battery_pct=80.0)
         run(self.life, sitting, 2.0)
-        acts = self.say("小白站起来", True, body=sitting)
+        acts = self.say("Biscuit, stand up", True, body=sitting)
         self.assertEqual([a.args for a in kinds(acts, "skill")], [{"skill": "sit_toggle"}])
         self.assertEqual(kinds(acts, "wake"), [])
 
 
 class NetTest(unittest.TestCase):
-    """"小白，连网": it asks the eyes to scan for a Wi-Fi QR code and says how it went."""
+    """"Biscuit, connect to Wi-Fi": it asks the eyes to scan for a Wi-Fi QR code and says how it went."""
 
     def setUp(self):
         self.life = Life(Config(deep_ok=True), random.Random(1))
         run(self.life, standing(), 6)
 
     def test_it_scans_and_says_how_it_went(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         self.assertEqual([a.args for a in scans(acts)], [{"cmd": "scan_qr", "timeout_s": 30.0}])
         self.assertTrue(self.life.snapshot(standing())["scanning"])
-        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "joined", "ssid": "我的手机"}])
+        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "joined", "ssid": "My Phone"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["joined"], "said in a person's words")
-        self.assertIn("lian2 shang4 la5 ！", [a.args.get("pinyin") for a in kinds(acts, "voice")], "duck-speak if no clip")
+        self.assertIn(duckspeak.syllables("Connected!"), [a.args.get("pinyin") for a in kinds(acts, "voice")], "duck-speak if no clip")
         snap = self.life.snapshot(standing())
         self.assertFalse(snap["scanning"])
-        self.assertIn("连上 我的手机 啦！", [d.get("meaning") for d in snap["dialog"]])
+        self.assertIn("I'm on My Phone now!", [d.get("meaning") for d in snap["dialog"]])
 
     def test_the_network_it_is_already_on(self):
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "already", "ssid": "Home-7k2Q"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["already"])
-        self.assertIn("我已经连着 Home-7k2Q 啦。", [d.get("meaning") for d in self.life.snapshot(standing())["dialog"]])
+        self.assertIn("I'm already on Home-7k2Q.", [d.get("meaning") for d in self.life.snapshot(standing())["dialog"]])
 
     def test_it_says_what_to_do_and_keeps_scanning_while_joining(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["scan_start"])
         run(self.life, standing(), 9.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "joining", "ssid": "我的手机"}])
+        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "joining", "ssid": "My Phone"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["joining"])
         self.assertTrue(self.life.snapshot(standing())["scanning"], "still at it")
         run(self.life, standing(), 5.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "not_found", "ssid": "我的手机"}])
+        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "not_found", "ssid": "My Phone"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["not_found"])
         self.assertFalse(self.life.snapshot(standing())["scanning"])
 
     def test_its_own_clip_coming_back_is_not_a_new_scan(self):
-        # 2026-10-17: "...再叫我连网" heard through its own microphone started scan after scan
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        # 2026-10-17: "...ask me to connect to Wi-Fi" heard through its own microphone started scan after scan
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         run(self.life, standing(), 9.0)
         run(self.life, standing(), 0.3, [{"type": "qr", "result": "timeout"}])
         run(self.life, standing(), 5.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "想再试就叫我连网", "addressed": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "to try again ask me to connect to Wi-Fi", "addressed": True}])
         self.assertEqual(scans(acts), [], "its own words")
         run(self.life, standing(), 8.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         self.assertEqual(len(scans(acts)), 1, "later, from someone, it scans again")
 
+    def past_the_clip(self, extra):
+        """Run until `extra` s after the clip playing now has ended."""
+        run(self.life, standing(), self.life.voice_until - self.life.t + extra)
+
     def test_cancel_stops_the_scan_and_says_so(self):
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
-        run(self.life, standing(), 14.0)    # after its prompt (which itself ends in "就说取消")
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "取消", "addressed": True}])
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
+        self.past_the_clip(1.5)    # after its prompt (which itself ends in "say cancel")
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "cancel", "addressed": True}])
         self.assertEqual([a.args for a in scans(acts)], [{"cmd": "stop"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["cancelled"])
         self.assertFalse(self.life.snapshot(standing())["scanning"])
@@ -360,56 +366,56 @@ class NetTest(unittest.TestCase):
         self.assertEqual(kinds(acts, "voice"), [], "said already")
 
     def test_cancel_right_after_the_prompt_is_heard(self):
-        # 2026-10-17: "不想连了，取消了吧" 2 s after the prompt ended was taken for the prompt's echo
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
-        run(self.life, standing(), 12.4)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "不想连了，取消了吧", "addressed": True}])
+        # 2026-10-17: "I don't want to connect, cancel it" 2 s after the prompt ended was taken for the prompt's echo
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
+        self.past_the_clip(1.0)
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "I don't want to connect, cancel it", "addressed": True}])
         self.assertEqual([a.args for a in scans(acts)], [{"cmd": "stop"}])
 
     def test_the_echo_of_a_prompt_is_still_dropped(self):
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
-        run(self.life, standing(), 11.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "放在我脸前面二三十厘米，保持一两秒", "addressed": True}])
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
+        self.past_the_clip(0.9)
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "in front of my face and keep it still for a second or two", "addressed": True}])
         self.assertEqual(scans(acts), [])
         self.assertEqual(kinds(acts, "ask"), [])
 
     def test_after_joining_it_reads_out_its_address(self):
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         run(self.life, standing(), 12.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "joined", "ssid": "我的手机"}])
+        acts = run(self.life, standing(), 0.3, [{"type": "qr", "result": "joined", "ssid": "My Phone"}])
         self.assertEqual([(a.args["clip"], a.args["then"]) for a in kinds(acts, "voice")], [("joined", "address")])
 
     def test_asked_its_address_it_reads_it_out(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "小白你的网址是多少", "addressed": True,
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, what is your ip address", "addressed": True,
                                                   "named": True}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["address"])
         self.assertEqual(scans(acts), [], "no scan")
         self.assertEqual(kinds(acts, "ask"), [], "no brain")
 
     def test_reading_its_address_it_does_not_hear_itself_ask_again(self):
-        # 2026-10-17: "网页地址是" came back through the mic and started it over, three times; and the
+        # 2026-10-17: "page address is" came back through the mic and started it over, three times; and the
         # whole address, after, closed the conversation with the "88" in "<robot-ip>"
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "小白你的网址是多少", "addressed": True, "named": True}])
-        for text in ("网页地址是。", "我的网页地址是。"):
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, what is your ip address", "addressed": True, "named": True}])
+        for text in ("page address is.", "my page address is."):
             run(self.life, standing(), 2.5)
             acts = run(self.life, standing(), 0.3, [{"type": "say", "text": text, "addressed": True}])
             self.assertEqual(kinds(acts, "voice"), [], text)
         run(self.life, standing(), 10.0)
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "我的网页地址是<robot-ip>，冒号8088，在手机浏览器里打开就行。",
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "My page address is <robot-ip>, colon 8088. Open it in your phone's browser.",
                                                   "addressed": True}])
         self.assertEqual(kinds(acts, "voice"), [])
         self.assertTrue(self.life.in_convo(), "its own 88 is no goodbye")
 
     def test_no_command_from_its_own_voice(self):
         self.life._voice_heard("joined", 0.0)
-        acts = run(self.life, standing(), 0.5, [{"type": "say", "text": "去睡觉吧", "addressed": True}])
+        acts = run(self.life, standing(), 0.5, [{"type": "say", "text": "go to sleep", "addressed": True}])
         self.assertEqual(kinds(acts, "rest"), [], "unnamed, while a clip plays: the clip")
-        acts = run(self.life, standing(), 0.5, [{"type": "say", "text": "小白去睡觉吧", "addressed": True, "named": True}])
+        acts = run(self.life, standing(), 0.5, [{"type": "say", "text": "Biscuit, go to sleep", "addressed": True, "named": True}])
         self.assertTrue(kinds(acts, "rest"), "with its name it is someone")
 
     def test_louder_and_quieter_and_the_page(self):
-        for text, args in (("小白大声点", {"step": 15}), ("小白小声一点", {"step": -15}),
-                           ("小白音量调到一半", {"set": 50}), ("小白最大声", {"set": 100})):
+        for text, args in (("Biscuit, louder please", {"step": 15}), ("Biscuit, a bit quieter", {"step": -15}),
+                           ("Biscuit, half volume", {"set": 50}), ("Biscuit, maximum volume", {"set": 100})):
             run(self.life, standing(), 3.0)
             acts = run(self.life, standing(), 0.3, [{"type": "say", "text": text, "addressed": True, "named": True}])
             self.assertEqual([a.args for a in kinds(acts, "volume")], [args], text)
@@ -421,64 +427,65 @@ class NetTest(unittest.TestCase):
     def test_the_ways_people_ask_for_it(self):
         from core import intent_of
         # 2026-10-17, from the robot's log
-        for text, want in (("声音再大一点。", "louder"), ("声音再小一点。", "quieter"), ("大声点。", "louder"),
-                           ("声音太小了，声音大一点。", "louder"), ("声音太大了，小声点", "quieter"),
-                           ("太吵了", "quieter"), ("我听不清", "louder"), ("音量调高", "louder"),
-                           ("小声一些", "quieter"), ("再大声点", "louder"), ("最大声", "vol_max"),
-                           ("你的声音好大吗？", None), ("你真牛。", None), ("小一点的那个", None)):
+        for text, want in (("Turn it up a bit.", "louder"), ("Turn your voice down a bit.", "quieter"), ("Louder.", "louder"),
+                           ("You're too quiet, speak up.", "louder"), ("You're too loud, quieter please", "quieter"),
+                           ("That's too noisy", "quieter"), ("I can't hear you", "louder"), ("Volume up", "louder"),
+                           ("A little softer", "quieter"), ("Speak up!", "louder"), ("Maximum volume", "vol_max"),
+                           ("Is your voice loud?", None), ("You're amazing.", None), ("The smaller one", None),
+                           ("Turn left", None)):
             self.assertEqual(intent_of(text), want, text)
 
     def test_asked_to_look_it_looks_and_waits_for_the_answer(self):
-        # voiced takes the name out of the text ("小白你看这是什么" -> a call and "你看这是什么")
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "你看这是什么", "addressed": True,
+        # voiced takes the name out of the text ("Biscuit, what is this" -> a call and "what is this")
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "what is this", "addressed": True,
                                                   "named": True}])
-        self.assertEqual([a.args["text"] for a in kinds(acts, "look")], ["你看这是什么"])
+        self.assertEqual([a.args["text"] for a in kinds(acts, "look")], ["what is this"])
         self.assertEqual(kinds(acts, "ask"), [], "the look asks the brain itself, with the photo")
         self.assertTrue(self.life.snapshot(standing())["asking"])
-        acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "开心", "say": "杯子！", "pinyin": "bei1 zi5",
+        acts = run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "happy", "say": "A cup!", "pinyin": "bei1 zi5",
                                                   "pre": "chirp", "gesture": "nod", "action": "none",
-                                                  "meaning": "是一个红杯子。", "via": "eyes", "photo": "123"}])
+                                                  "meaning": "It's a red cup.", "via": "eyes", "photo": "123"}])
         d = self.life.snapshot(standing())["dialog"][-1]
-        self.assertEqual((d["meaning"], d["photo"]), ("是一个红杯子。", "123"))
+        self.assertEqual((d["meaning"], d["photo"]), ("It's a red cup.", "123"))
 
     def test_no_look_while_walking(self):
         walking = Body(policy="walk", temps_c=[40.0] * 15, battery_pct=80.0, twist=(0.2, 0.0, 0.0))
-        acts = run(self.life, walking, 0.3, [{"type": "say", "text": "小白你看看这个", "addressed": True, "named": True}])
+        acts = run(self.life, walking, 0.3, [{"type": "say", "text": "Biscuit, look at this", "addressed": True, "named": True}])
         self.assertEqual(kinds(acts, "look"), [])
 
     def test_its_name_in_its_own_duck_speak_is_no_call(self):
-        run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "开心", "say": "小白在这！", "pinyin": "xiao3 bai2 zai4 zhe4",
+        run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "happy", "say": "Biscuit is here!", "pinyin": "xiao3 bai2 zai4 zhe4",
                                           "pre": "none", "gesture": "none", "action": "none"}])
-        acts = run(self.life, standing(), 0.3, [{"type": "call", "text": "小白"}])
+        acts = run(self.life, standing(), 0.3, [{"type": "call", "text": "Biscuit"}])
         self.assertEqual([a.args for a in kinds(acts, "speak") if a.args.get("pinyin") == ""], [], "not hushed")
 
     def test_cancel_words_are_only_for_a_scan(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "算了", "addressed": True, "named": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "never mind", "addressed": True, "named": True}])
         self.assertEqual(scans(acts), [])
         self.assertEqual(kinds(acts, "voice"), [])
 
     def test_no_clip_says_its_name(self):
         import prompts
         for key, text in prompts.PROMPTS.items():
-            self.assertNotIn("小白", text, key)
+            self.assertNotIn("Biscuit", text, key)
 
     def test_a_question_about_the_internet_is_no_scan(self):
-        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "小白你能上网吗", "addressed": True, "named": True}])
+        acts = run(self.life, standing(), 0.3, [{"type": "say", "text": "Biscuit, can you go online?", "addressed": True, "named": True}])
         self.assertEqual(scans(acts), [])
 
     def test_not_while_walking(self):
         walking = Body(policy="walk", temps_c=[40.0] * 15, battery_pct=80.0, twist=(0.2, 0.0, 0.0))
-        acts = run(self.life, walking, 0.3, [{"type": "say", "text": "小白连网", "addressed": True, "named": True}])
+        acts = run(self.life, walking, 0.3, [{"type": "say", "text": "Biscuit, connect to wifi", "addressed": True, "named": True}])
         self.assertEqual(scans(acts), [])
 
     def test_the_dialog_keeps_both_sides(self):
         run(self.life, standing(), 1.5, [{"type": "call", "yaw": 0.0}])
-        run(self.life, standing(), 0.3, [{"type": "say", "text": "你好呀", "addressed": True, "named": False}])
-        run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "开心", "say": "嘎嘎", "pinyin": "ga1 ga1",
+        run(self.life, standing(), 0.3, [{"type": "say", "text": "hello there", "addressed": True, "named": False}])
+        run(self.life, standing(), 0.3, [{"type": "reply", "emotion": "happy", "say": "Quack quack", "pinyin": "ga1 ga1",
                                           "pre": "none", "gesture": "nod", "body": "none", "action": "none",
-                                          "meaning": "你好！", "via": "small"}])
+                                          "meaning": "Hello!", "via": "small"}])
         d = self.life.snapshot(standing())["dialog"]
-        self.assertEqual([(x["who"], x["text"]) for x in d[-2:]], [("you", "你好呀"), ("duck", "嘎嘎")])
+        self.assertEqual([(x["who"], x["text"]) for x in d[-2:]], [("you", "hello there"), ("duck", "Quack quack")])
         self.assertEqual(d[-1]["via"], "small")
 
 
@@ -511,20 +518,20 @@ class JevEventsTest(unittest.TestCase):
         return run(self.life, standing(), secs, list(events))
 
     def test_the_ask_says_whether_the_name_was_said(self):
-        acts = self.ev({"type": "say", "text": "你在干嘛", "addressed": True, "named": True})
+        acts = self.ev({"type": "say", "text": "what are you doing", "addressed": True, "named": True})
         self.assertTrue(kinds(acts, "ask")[0].args["named"])
 
     def test_an_ignored_utterance_ends_the_wait_quietly(self):
         self.ev({"type": "call", "yaw": 0.0}, secs=1.5)
-        self.ev({"type": "say", "text": "申请吧", "addressed": True, "named": False})
+        self.ev({"type": "say", "text": "apply then", "addressed": True, "named": False})
         self.assertTrue(self.life.snapshot(standing())["asking"])
-        acts = self.ev({"type": "ignored", "text": "申请吧", "why": "not for the duck (0.12)"}, secs=3.0)
+        acts = self.ev({"type": "ignored", "text": "apply then", "why": "not for the duck (0.12)"}, secs=3.0)
         self.assertFalse(self.life.snapshot(standing())["asking"])
         self.assertEqual(kinds(acts, "speak"), [], "no thinking hum, no answer")
 
     def test_the_judgment_shows_next_to_what_was_said(self):
-        self.ev({"type": "say", "text": "你在干嘛", "addressed": True, "named": True})
-        self.ev({"type": "judged", "text": "你在干嘛", "summary": {"for_duck": 0.93, "intent": "chat"}})
+        self.ev({"type": "say", "text": "what are you doing", "addressed": True, "named": True})
+        self.ev({"type": "judged", "text": "what are you doing", "summary": {"for_duck": 0.93, "intent": "chat"}})
         you = [d for d in self.life.snapshot(standing())["dialog"] if d["who"] == "you"][-1]
         self.assertEqual(you["jev"]["for_duck"], 0.93)
 
@@ -545,7 +552,7 @@ class JevEventsTest(unittest.TestCase):
         self.assertTrue(any(a.args.get("tag") == "chirp" for a in kinds(acts, "sound")))
 
     def test_a_command_jev_caught(self):
-        acts = self.ev({"type": "command", "name": "rest", "text": "你去歇着吧", "via": "jev"})
+        acts = self.ev({"type": "command", "name": "rest", "text": "go and have a rest", "via": "jev"})
         self.assertEqual([a.args.get("deep") for a in kinds(acts, "rest")], [True])
         you = [d for d in self.life.snapshot(standing())["dialog"] if d["who"] == "you"][-1]
         self.assertEqual(you["command"], "rest")
@@ -571,7 +578,7 @@ class ConversationModeTest(unittest.TestCase):
         run(self.life, standing(), 6)
 
     def call(self):
-        """Its name alone: it answers "嗯？" and does not hear the next 1.3 s (its own voice); the next
+        """Its name alone: it answers "Hmm?" and does not hear the next 1.3 s (its own voice); the next
         sentence reaches lifed 1-2 s later on the robot (VAD tail + ASR)."""
         return run(self.life, standing(), 1.5, [{"type": "call", "yaw": 0.0}])
 
@@ -579,78 +586,78 @@ class ConversationModeTest(unittest.TestCase):
         return run(self.life, standing(), secs, [{"type": "say", "text": text, "addressed": named, "named": named}])
 
     def answer(self, secs=0.2):
-        return run(self.life, standing(), secs, [{"type": "reply", "emotion": "开心", "say": "嘎嘎", "pinyin": "ga1 ga1",
+        return run(self.life, standing(), secs, [{"type": "reply", "emotion": "happy", "say": "Quack quack", "pinyin": "ga1 ga1",
                                                    "pre": "chirp", "gesture": "nod", "body": "none", "action": "none"}])
 
     def test_without_its_name_nothing_goes_to_the_brain(self):
-        acts = self.say("今天天气怎么样")
+        acts = self.say("what's the weather like today")
         self.assertEqual(kinds(acts, "ask"), [])
 
     def test_after_its_name_the_talk_continues_without_it(self):
         self.call()
-        acts = self.say("今天天气怎么样")
+        acts = self.say("what's the weather like today")
         self.assertEqual(len(kinds(acts, "ask")), 1)
         session = kinds(acts, "ask")[0].args["session"]
         self.answer(secs=20)                 # it answers; you think for a while
-        acts = self.say("那我们出去玩吧")
+        acts = self.say("then let's go play outside")
         self.assertEqual(len(kinds(acts, "ask")), 1, "20 s after its answer the conversation is still on")
         self.assertEqual(kinds(acts, "ask")[0].args["session"], session, "one brain session per conversation")
 
     def test_it_closes_30_s_after_its_last_answer(self):
         self.call()
-        self.say("你好呀小白", named=True)
+        self.say("hello there, Biscuit", named=True)
         acts = self.answer(secs=35)
         self.assertFalse(self.life.in_convo())
         self.assertTrue(any(a.args.get("tag") == "coo" for a in kinds(acts, "sound")), "a soft coo as it lets go")
-        acts = self.say("还在吗")
+        acts = self.say("are you still there")
         self.assertEqual(kinds(acts, "ask"), [], "closed: it needs its name again")
-        acts = self.say("小白还在吗", named=True)
+        acts = self.say("Biscuit, are you still there?", named=True)
         self.assertEqual(len(kinds(acts, "ask")), 1)
 
     def test_the_brain_can_end_it_after_its_goodbye(self):
         self.call()
-        self.say("那我去忙啦")
-        acts = run(self.life, standing(), 0.2, [{"type": "reply", "emotion": "难过", "say": "好吧", "pinyin": "hao3 ba5",
+        self.say("I'm off to work then")
+        acts = run(self.life, standing(), 0.2, [{"type": "reply", "emotion": "sad", "say": "Okay...", "pinyin": "hao3 ba5",
                                                  "pre": "coo", "gesture": "droop", "body": "none", "action": "none",
                                                  "end": True}])
         self.assertTrue(self.life.in_convo(), "it finishes saying bye first")
         acts = run(self.life, standing(), 5.0)
         self.assertFalse(self.life.in_convo())
         self.assertEqual([a for a in kinds(acts, "sound") if a.args.get("tag") == "coo"], [], "no second goodbye")
-        self.assertEqual(kinds(self.say("还有一件事"), "ask"), [], "closed: the name again")
+        self.assertEqual(kinds(self.say("one more thing"), "ask"), [], "closed: the name again")
 
     def test_a_goodbye_closes_it_at_once(self):
         self.call()
-        self.say("今天好开心", secs=3.0)
-        acts = self.say("拜拜")
+        self.say("I had such a fun day", secs=3.0)
+        acts = self.say("bye bye")
         self.assertFalse(self.life.in_convo())
         self.assertEqual(kinds(acts, "ask"), [])
         self.assertTrue(any(a.args.get("tag") == "coo" for a in kinds(acts, "sound")))
-        self.assertEqual(kinds(self.say("你好笨"), "ask"), [])
+        self.assertEqual(kinds(self.say("you're so silly"), "ask"), [])
 
     def test_its_own_voice_is_not_a_question(self):
         self.call()
-        self.say("你开心吗")
+        self.say("are you happy")
         self.answer(secs=0.3)
-        acts = self.say("啊")            # its own duck-speak, back through the mic
+        acts = self.say("Ah")            # its own duck-speak, back through the mic
         self.assertEqual(kinds(acts, "ask"), [])
 
     def test_calling_it_while_it_talks_stops_it(self):
         self.call()
-        self.say("唱首歌吧")
+        self.say("sing me a song")
         self.answer(secs=0.3)
         acts = self.call()
         self.assertIn("", [a.args.get("pinyin") for a in kinds(acts, "speak")], "an empty speak silences it")
-        acts = self.say("别唱了")
+        acts = self.say("stop singing")
         self.assertEqual(len(kinds(acts, "ask")), 1, "and it listens straight away")
 
     def test_asleep_it_answers_but_does_not_get_up(self):
-        self.say("晚安", named=True)
+        self.say("good night", named=True)
         self.assertEqual(self.life.state, "SLEEPING")
         sleeping = Body(policy="sit", temps_c=[40.0] * 15, battery_pct=80.0,
                         rest={"phase": "resting", "deep": True})
         run(self.life, sleeping, 2.0)
-        acts = run(self.life, sleeping, 0.2, [{"type": "say", "text": "小白你睡着了吗", "addressed": True, "named": True}])
+        acts = run(self.life, sleeping, 0.2, [{"type": "say", "text": "Biscuit, are you asleep?", "addressed": True, "named": True}])
         self.assertEqual(len(kinds(acts, "ask")), 1)
         self.assertEqual(kinds(acts, "wake"), [])
         self.assertEqual(self.life.state, "SLEEPING")
@@ -659,7 +666,7 @@ class ConversationModeTest(unittest.TestCase):
 
 
 class MissionTest(unittest.TestCase):
-    """A spoken route: read back, "开始", reports, "停" / "继续" / "算了" (lifed runs it: mission.py)."""
+    """A spoken route: read back, "start", reports, "stop" / "continue" / "never mind" (lifed runs it: mission.py)."""
 
     def setUp(self):
         self.life = Life(Config(missions="dry"), random.Random(1))
@@ -670,80 +677,80 @@ class MissionTest(unittest.TestCase):
         return run(self.life, standing(), 0.3, [{"type": "say", "text": text, "addressed": addressed, "named": named}])
 
     def test_a_route_is_read_back_and_waits_for_go(self):
-        acts = self.say("往前走一米，再左转，再往前走半米，最后坐下", named=True)
+        acts = self.say("walk forward one meter, then turn left, then walk forward half a meter, and finally sit down", named=True)
         m = [a.args for a in kinds(acts, "mission")]
         self.assertEqual([x["cmd"] for x in m], ["propose"])
-        self.assertEqual([s.words() for s in m[0]["steps"]], ["往前走 1 米", "左转 90°", "往前走 0.5 米", "坐下"])
+        self.assertEqual([s.words() for s in m[0]["steps"]], ["walk forward 1 m", "turn left 90°", "walk forward 0.5 m", "sit down"])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["mission_ready_dry"])
-        self.assertEqual(kinds(acts, "skill"), [], "the 坐下 in it is the route's, not now")
-        acts = self.say("开始")
+        self.assertEqual(kinds(acts, "skill"), [], "the sit down in it is the route's, not now")
+        acts = self.say("start")
         self.assertEqual([a.args["cmd"] for a in kinds(acts, "mission")], ["start"])
 
     def test_go_said_right_after_the_prompt_counts_and_its_echo_does_not(self):
-        # 2026-10-17: "开始" a second after "……说开始就出发" was dropped as the clip's echo
-        self.say("往前走一米，再左转，再往前走半米，最后坐下", named=True)
+        # 2026-10-17: "start" a second after "... say start and I will set off" was dropped as the clip's echo
+        self.say("walk forward one meter, then turn left, then walk forward half a meter, and finally sit down", named=True)
         until = self.life.voice_until
         run(self.life, standing(), until - self.life.t + 0.1)
-        acts = run(self.life, standing(), 0.1, [{"type": "say", "text": "说开始就出发", "addressed": True}])
+        acts = run(self.life, standing(), 0.1, [{"type": "say", "text": "say start and I will set off", "addressed": True}])
         self.assertEqual(kinds(acts, "mission"), [], "its own words, just after the clip")
-        acts = run(self.life, standing(), 0.1, [{"type": "say", "text": "出发", "addressed": True}])
+        acts = run(self.life, standing(), 0.1, [{"type": "say", "text": "set off", "addressed": True}])
         self.assertEqual(kinds(acts, "mission"), [], "the clip's last word, too soon to be an answer")
         run(self.life, standing(), 0.5)
-        acts = run(self.life, standing(), 0.1, [{"type": "say", "text": "开始", "addressed": True}])
+        acts = run(self.life, standing(), 0.1, [{"type": "say", "text": "start", "addressed": True}])
         self.assertEqual([a.args["cmd"] for a in kinds(acts, "mission")], ["start"])
 
     def test_halt_needs_no_name_while_it_runs_and_continue_goes_on(self):
-        self.say("往前走一米", named=True)
-        self.say("开始")
-        acts = self.say("停", addressed=False)
+        self.say("walk forward one meter", named=True)
+        self.say("start")
+        acts = self.say("stop", addressed=False)
         self.assertEqual([a.args for a in kinds(acts, "mission")], [{"cmd": "pause", "why": "told"}])
-        acts = self.say("继续")
+        acts = self.say("continue")
         self.assertEqual([a.args["cmd"] for a in kinds(acts, "mission")], ["resume"])
-        acts = self.say("算了")
+        acts = self.say("never mind")
         self.assertEqual([a.args["cmd"] for a in kinds(acts, "mission")], ["cancel"])
-        acts = self.say("开始")
+        acts = self.say("start")
         self.assertEqual(kinds(acts, "mission"), [], "nothing left to start")
 
     def test_unclear_routes_are_asked_about(self):
-        for text, clip in (("往左走半米", "ask_turn_or_side"), ("往前走", "ask_how_far"), ("向左侧移半米", "no_sidestep"),
-                           ("往前走五米", "too_far")):
+        for text, clip in (("go left half a meter", "ask_turn_or_side"), ("walk forward", "ask_how_far"), ("sidestep left half a meter", "no_sidestep"),
+                           ("walk forward five meters", "too_far")):
             acts = self.say(text, named=True)
             self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], [clip], text)
             self.assertEqual(kinds(acts, "mission"), [], text)
 
     def test_reports(self):
-        self.say("往前走一米", named=True)
-        self.say("开始")
-        run(self.life, standing(), 0.3, [{"type": "mission", "what": "step_done", "i": 0, "words": "往前走 1 米", "note": "0.98 m"}])
-        self.assertIn("✓ 往前走 1 米（0.98 m）", [d.get("meaning") for d in self.life.snapshot(standing())["dialog"]])
-        acts = run(self.life, standing(), 0.3, [{"type": "mission", "what": "done", "words": "往前走 1 米"}])
+        self.say("walk forward one meter", named=True)
+        self.say("start")
+        run(self.life, standing(), 0.3, [{"type": "mission", "what": "step_done", "i": 0, "words": "walk forward 1 m", "note": "0.98 m"}])
+        self.assertIn("✓ walk forward 1 m (0.98 m)", [d.get("meaning") for d in self.life.snapshot(standing())["dialog"]])
+        acts = run(self.life, standing(), 0.3, [{"type": "mission", "what": "done", "words": "walk forward 1 m"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["mission_done"])
-        acts = self.say("开始")
+        acts = self.say("start")
         self.assertEqual(kinds(acts, "mission"), [])
 
     def test_an_obstacle_report(self):
-        self.say("往前走一米", named=True)
-        self.say("开始")
+        self.say("walk forward one meter", named=True)
+        self.say("start")
         acts = run(self.life, standing(), 0.3, [{"type": "mission", "what": "paused", "why": "obstacle"}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["mission_obstacle"])
-        acts = self.say("继续")
+        acts = self.say("continue")
         self.assertEqual([a.args["cmd"] for a in kinds(acts, "mission")], ["resume"])
 
     def test_on_the_robot_it_must_be_standing_to_set_off(self):
         life = Life(Config(missions="real"), random.Random(1))
         sitting = Body(policy="sit", temps_c=[40.0] * 15, battery_pct=80.0)
         run(life, sitting, 6)
-        acts = run(life, sitting, 0.3, [{"type": "say", "text": "往前走一米", "addressed": True, "named": True}])
+        acts = run(life, sitting, 0.3, [{"type": "say", "text": "walk forward one meter", "addressed": True, "named": True}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["mission_need_stand"])
         self.assertEqual(kinds(acts, "mission"), [])
         run(life, standing(), 15)
-        acts = run(life, standing(), 0.3, [{"type": "say", "text": "往前走一米", "addressed": True, "named": True}])
+        acts = run(life, standing(), 0.3, [{"type": "say", "text": "walk forward one meter", "addressed": True, "named": True}])
         self.assertEqual([a.args["clip"] for a in kinds(acts, "voice")], ["mission_ready"])
 
     def test_off_no_routes(self):
         life = Life(Config(missions="off"), random.Random(1))
         run(life, standing(), 6)
-        acts = run(life, standing(), 0.3, [{"type": "say", "text": "往前走一米", "addressed": True, "named": True}])
+        acts = run(life, standing(), 0.3, [{"type": "say", "text": "walk forward one meter", "addressed": True, "named": True}])
         self.assertEqual(kinds(acts, "mission"), [])
 
 
@@ -757,7 +764,7 @@ class HeardDirectionTest(unittest.TestCase):
         run(self.life, standing(), 6)
 
     def gaze_after_call(self, ev, body=None):
-        acts = run(self.life, body or standing(), 0.3, [dict({"type": "call", "text": "小白"}, **ev)])
+        acts = run(self.life, body or standing(), 0.3, [dict({"type": "call", "text": "Biscuit"}, **ev)])
         return [a.args["yaw"] for a in kinds(acts, "gaze")]
 
     def test_a_call_from_the_left_turns_the_head_there(self):
@@ -799,14 +806,14 @@ class EyesTest(unittest.TestCase):
         self.assertEqual(self.watches(run(self.life, walking, 6)), [])
 
     def test_a_call_looks_there_a_little_up_and_watches_fast(self):
-        acts = run(self.life, standing(), 0.5, [{"type": "call", "text": "小白", "yaw": 0.6, "dir_ok": True}])
+        acts = run(self.life, standing(), 0.5, [{"type": "call", "text": "Biscuit", "yaw": 0.6, "dir_ok": True}])
         last = kinds(acts, "gaze")[-1].args
         self.assertAlmostEqual(last["yaw"], 0.6, places=2)
         self.assertGreater(last["pitch"], 0.2)
         self.assertIn(5.0, [x["hz"] for x in self.watches(acts)])
 
     def test_the_face_found_there_is_what_it_looks_at(self):
-        run(self.life, standing(), 0.3, [{"type": "call", "text": "小白", "yaw": 0.6, "dir_ok": True}])
+        run(self.life, standing(), 0.3, [{"type": "call", "text": "Biscuit", "yaw": 0.6, "dir_ok": True}])
         turned = self.head_at(0.6, 0.25)
         run(self.life, turned, 1.0)
         acts = run(self.life, turned, 0.5, [{"type": "face", "yaw_cam": -0.1, "pitch_cam": 0.1, "size": 0.08}])
@@ -843,7 +850,7 @@ class EyesTest(unittest.TestCase):
     def test_what_is_shown_is_looked_at(self):
         turned = self.head_at(0.3, 0.2)
         run(self.life, turned, 1.0)
-        run(self.life, turned, 0.3, [{"type": "say", "text": "小白你看这是什么", "addressed": True, "named": True}])
+        run(self.life, turned, 0.3, [{"type": "say", "text": "Biscuit, what is this?", "addressed": True, "named": True}])
         self.assertEqual(self.life.att.focus.kind, "object")
         self.assertAlmostEqual(self.life.att.focus.yaw, 0.3, places=2)
 
@@ -865,6 +872,93 @@ class FallenTest(unittest.TestCase):
         sitting = Body(policy="sit", temps_c=[40.0] * 15, battery_pct=80.0)
         run(life, sitting, 3.0)
         self.assertEqual(life.state, "IDLE", "upright again, sitting")
+
+
+class WordsTest(unittest.TestCase):
+    """English command words match as whole words, in any case, and not when negated."""
+
+    def test_whole_words_only(self):
+        for text in ("this is interesting", "that's a good one", "I want to visit grandma", "maybe later",
+                     "he hid behind the shed", "an unstoppable duck", "the restaurant is closed", "a sitcom",
+                     "this hip thing", "the history of goats"):
+            self.assertIsNone(intent_of(text), text)
+            for state in ("proposed", "running", "paused"):
+                self.assertIsNone(mission_word(text, state), (text, state))
+        self.assertEqual(words.words("Don't connect to the Wi-Fi!"), ["dont", "connect", "to", "the", "wifi"])
+        self.assertEqual(words.words("Scan the Q R code"), ["scan", "the", "qr", "code"])
+
+    def test_intents(self):
+        for text, want in (("Hi!", "greet"), ("HELLO there", "greet"), ("hey, what's the weather like today", None),
+                           ("Sit down, please.", "sit"), ("sit", "sit"), ("Hey!", "greet"), ("Sit please", "sit"), ("sleep", "sleep"),
+                           ("Did you sleep well?", None), ("Time for bed.", "sleep"), ("Wake up!", "wake"),
+                           ("Get up", "wake"), ("Take a break", "rest"), ("rest now", "rest"),
+                           ("Enjoy the rest of your day", None), ("Goodbye!", "bye"), ("Bye bye.", "bye"),
+                           ("I can't see you", None), ("Connect to the Wi-Fi", "net"), ("Can you go online?", None),
+                           ("What's your IP address?", "addr"), ("What is this?", "look"), ("Never mind", "cancel")):
+            self.assertEqual(intent_of(text), want, text)
+
+    def test_negated_commands_are_not_commands(self):
+        for text in ("Don't sit down", "do not go to sleep", "don't take a rest yet", "never sit down",
+                     "Don't connect to the wifi"):
+            self.assertNotIn(intent_of(text), ("sit", "sleep", "rest", "net"), text)
+        self.assertEqual(intent_of("Don't connect to the wifi"), "cancel")
+
+    def test_its_name_is_left_out(self):
+        self.assertEqual(intent_of("Biscuit, sleep", "Biscuit"), "sleep")
+        self.assertEqual(mission_word("Biscuit, start", "proposed", "Biscuit"), "go")
+
+
+class StopTest(unittest.TestCase):
+    """"Stop" must never be missed, and never start anything (the user's first rule for English)."""
+
+    STOPS = ("stop", "Stop!", "STOP.", "stop stop stop", "Please stop.", "Stop walking!", "hey, stop it",
+             "Okay stop", "No, stop!", "Wait!", "hold on", "Don't move!", "Freeze!", "stand still", "Whoa, whoa",
+             "stop, don't go there", "stop right there")
+
+    def test_every_way_of_saying_it_halts_a_running_mission(self):
+        for text in self.STOPS:
+            self.assertIn(mission_word(text, "running"), ("halt", "cancel"), text)
+        self.assertEqual(mission_word("stop", "running"), "halt", "a pause: it can go on after")
+
+    def test_it_never_walks_sleeps_or_gets_up(self):
+        import mission
+        for text in self.STOPS:
+            self.assertNotIn(intent_of(text), ("sleep", "rest", "wake", "sit", "greet"), text)
+            self.assertIsNone(mission.parse_route(text), text)
+            self.assertNotIn(mission_word(text, "proposed"), ("go",), text)
+            self.assertNotIn(mission_word(text, "paused"), ("resume",), text)
+
+    def test_stop_said_without_the_name_while_a_clip_plays_still_halts(self):
+        life = Life(Config(missions="dry"), random.Random(1))
+        run(life, standing(), 6)
+        run(life, standing(), 15.0)
+        run(life, standing(), 0.3, [{"type": "say", "text": "walk forward one meter", "addressed": True, "named": True}])
+        run(life, standing(), 15.0)
+        run(life, standing(), 0.3, [{"type": "say", "text": "start", "addressed": True}])
+        self.assertEqual(life.mission_state, "running")
+        life._voice_heard("mission_done", 0.0)                 # a clip playing (any clip)
+        acts = run(life, standing(), 0.3, [{"type": "say", "text": "Stop!", "addressed": False}])
+        self.assertEqual([a.args for a in kinds(acts, "mission")], [{"cmd": "pause", "why": "told"}])
+
+    def test_go_words_only_when_that_is_all_that_was_said(self):
+        for text, want in (("start", "go"), ("Okay, go!", "go"), ("let's go", "go"), ("you can start now", "go"),
+                           ("go go go", "go"), ("go to sleep", None), ("where do you go at night", None),
+                           ("don't go", "cancel"), ("don't start yet", "cancel")):
+            self.assertEqual(mission_word(text, "proposed"), want, text)
+        for text, want in (("continue", "resume"), ("keep going", "resume"), ("Okay, carry on.", "resume"),
+                           ("continue the story", None)):
+            self.assertEqual(mission_word(text, "paused"), want, text)
+
+
+class DuckSpeakTest(unittest.TestCase):
+    """What core says itself is duck-speak robotd can parse."""
+
+    def test_its_own_lines_parse(self):
+        life = Life(Config(), random.Random(1))
+        for r in life.QR_SAYS:
+            e = life._qr_expression({"result": r, "ssid": "Home"})
+            self.assertTrue(e["pinyin"] and duckspeak.parses(e["pinyin"]), (r, e["pinyin"]))
+            self.assertTrue(e["pinyin"].isascii())
 
 
 if __name__ == "__main__":

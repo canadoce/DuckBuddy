@@ -10,8 +10,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lifed  # noqa: E402
 
-BRAIN_REPLY = {"emotion": "开心", "say": "嘎嘎", "pinyin": "ga1 ga1", "pre": "none", "gesture": "nod",
-               "body": "none", "action": "none", "meaning": "我在呢"}
+BRAIN_REPLY = {"emotion": "happy", "say": "Quack quack", "pinyin": "gua1 gua4", "pre": "none", "gesture": "nod",
+               "body": "none", "action": "none", "meaning": "I'm here."}
 
 
 def make(jev="shadow", answers=None, brain=BRAIN_REPLY, brain_delay=0.05):
@@ -52,37 +52,37 @@ def ask(L, text, named=True):
 class AskTest(unittest.TestCase):
     def test_no_jev_the_brain_answers(self):
         L, calls = make(jev="off")
-        types, events = ask(L, "你在干嘛")
+        types, events = ask(L, "what are you doing")
         self.assertEqual(types, ["reply"])
-        self.assertEqual(events[-1]["say"], "嘎嘎")
+        self.assertEqual(events[-1]["say"], "Quack quack")
 
     def test_jev_down_is_a_counted_fallback_and_the_brain_answers(self):
         L, calls = make(answers=None)
-        types, _ = ask(L, "你在干嘛")
+        types, _ = ask(L, "what are you doing")
         self.assertEqual(types, ["reply"])
         self.assertEqual(L.jev_stats["fallback"], 1)
 
     def test_garbage_is_not_answered(self):
         L, calls = make(answers=jev(for_duck=0.1, intent="unclear", p_intent=0.9))
-        types, events = ask(L, "申请吧", named=False)
+        types, events = ask(L, "apply then", named=False)
         self.assertEqual(types, ["judged", "ignored"])
         self.assertEqual(events[0]["summary"]["action"], "ignore")
 
     def test_a_missed_command_is_carried_out_instead_of_answered(self):
         L, calls = make(answers=jev(intent="rest", p_intent=0.85))
-        types, events = ask(L, "你去歇着吧")
+        types, events = ask(L, "go and have a rest")
         self.assertEqual(types, ["judged", "command", "ignored"])
-        self.assertEqual(events[1], {"type": "command", "name": "rest", "text": "你去歇着吧", "via": "jev"})
+        self.assertEqual(events[1], {"type": "command", "name": "rest", "text": "go and have a rest", "via": "jev"})
 
     def test_mode_on_greetings_get_the_small_brain_at_once(self):
         L, calls = make(jev="on", answers=jev(intent="chat", reply="simple", p_reply=0.9), brain_delay=5.0)
-        types, events = ask(L, "你好呀")
+        types, events = ask(L, "hello there")
         self.assertEqual(types, ["judged", "reply"])
         self.assertEqual(events[-1]["via"], "small", "no waiting for the brain")
 
     def test_brain_down_the_small_brain_answers(self):
         L, calls = make(answers=jev(), brain=None)
-        types, events = ask(L, "你在干嘛")
+        types, events = ask(L, "what are you doing")
         self.assertEqual(types, ["judged", "reply"])
         self.assertEqual(events[-1]["via"], "small")
 
@@ -90,7 +90,7 @@ class AskTest(unittest.TestCase):
 
 class LookTest(unittest.TestCase):
     def run_look(self, L):
-        asyncio.run(L.look({"text": "你看这是什么", "session": "c1"}))
+        asyncio.run(L.look({"text": "what is this", "session": "c1"}))
         return L.events[-1]
 
     def test_offline_it_says_so_in_a_persons_words(self):
@@ -114,8 +114,8 @@ class LookTest(unittest.TestCase):
             import io
             import json
             sent.update(json.loads(req.data))
-            return io.BytesIO(json.dumps({"emotion": "开心", "say": "杯子！", "pinyin": "bei1 zi5 ！",
-                                          "meaning": "是一个红色的杯子。", "seen": True}).encode())
+            return io.BytesIO(json.dumps({"emotion": "happy", "say": "A cup!", "pinyin": "e5 ke4 !",
+                                          "meaning": "It's a red cup.", "seen": True}).encode())
         real = lifed.urllib.request.urlopen
         lifed.urllib.request.urlopen = fake_urlopen
         try:
@@ -124,7 +124,7 @@ class LookTest(unittest.TestCase):
             lifed.urllib.request.urlopen = real
         self.assertEqual(sent["image"], "AAAA")
         self.assertEqual(sent["session"], "c1")
-        self.assertEqual((ev["via"], ev["photo"], ev["meaning"]), ("eyes", "123", "是一个红色的杯子。"))
+        self.assertEqual((ev["via"], ev["photo"], ev["meaning"]), ("eyes", "123", "It's a red cup."))
 
 
 
@@ -132,7 +132,7 @@ class MissionRunTest(unittest.TestCase):
     def test_a_dry_run_of_the_route_reports_each_step(self):
         import mission
         L, _ = make()
-        r = mission.parse_route("往前走一米，再左转，再往前走半米，最后坐下")
+        r = mission.parse_route("walk forward one meter, then turn left, then walk forward half a meter, and finally sit down")
         L.mission_cmd({"cmd": "propose", "text": "route", "steps": r.steps})
         L.mission_cmd({"cmd": "start"})
         t = lifed.time.monotonic()
@@ -171,7 +171,7 @@ class RealMissionTest(unittest.TestCase):
         self.L.robot.notify, self.L.robot.request = notify, request
         self.L.body = lifed.Body(policy="stand", odom=(0.0, 0.0, 0.0), temps_c=[40.0] * 15)
         self.L.tof_at, self.L.tof_m = lifed.time.monotonic(), None
-        r = mission.parse_route("往前走半米，坐下")
+        r = mission.parse_route("walk forward half a meter, sit down")
         self.L.mission_cmd({"cmd": "propose", "text": "x", "steps": r.steps})
         self.L.mission_cmd({"cmd": "start"})
 

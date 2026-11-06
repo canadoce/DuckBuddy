@@ -2,9 +2,9 @@
 """Missions: a few steps in the real world, done one at a time and each checked before the next
 (docs/project/duck-agent-tools-plan-20261017-CN.md §5.6).
 
-- `parse_route` turns a spoken route ("往前走一米，左转，再往前走半米，最后坐下") into steps, with no
-  network: the offline planner. Anything it cannot read for sure is a question back, not a guess
-  ("往左走半米": turn and walk, or sidestep?).
+- `parse_route` turns a spoken route ("walk forward one meter, turn left, then walk half a meter,
+  and finally sit down") into steps, with no network: the offline planner. Anything it cannot read
+  for sure is a question back, not a guess ("go left half a meter": turn and walk, or sidestep?).
 - `Mission` runs them against the odometry: one step at a time, a step only counts once it is
   verified (settled, then checked against its target), a short step is tried once more, anything
   else stops the mission. The program counter and verify bit are AI4Robot's slot-belief-network
@@ -55,53 +55,83 @@ TURN_SIGMA_DEG = 3.0
 
 # ── the offline planner: a spoken route ────────────────────────────────────────────────────────
 
-DIG = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-NUM = r"(?:\d+(?:\.\d+)?|[零一二两三四五六七八九十百点]+|半)"
-DIST_RE = re.compile(rf"({NUM})\s*(厘米|公分|cm|米|公尺|m)(半)?", re.I)
-ANGLE_RE = re.compile(rf"({NUM})\s*度")
-SPLIT_RE = re.compile(r"[，,。；;！!？?、]|然后|接着|之后|最后|再|先|(?<=转)后")
-MOVE_WORDS = re.compile(r"走|进|退|转|移|挪|坐|站|起立")
+ONES = {"zero": 0, "oh": 0, "one": 1, "a": 1, "an": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+        "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+        "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19}
+TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
+        "ninety": 90}
+NUM_WORD = "|".join(sorted(list(ONES) + list(TENS) + ["hundred", "half", "point", "and", "quarter"],
+                           key=len, reverse=True))
+# a number as digits ("1.5", "50") or words ("one and a half", "half a", "forty five")
+NUM = rf"(?:\d+(?:\.\d+)?|\.\d+|(?:{NUM_WORD})(?:[\s-]+(?:{NUM_WORD}))*)(?:\s+and\s+a\s+half)?"
+DIST_RE = re.compile(rf"\b({NUM})\s*(centimet(?:er|re)s?|cm|met(?:er|re)s?|m)\b(\s+and\s+a\s+half)?", re.I)
+ANGLE_RE = re.compile(rf"\b({NUM})\s*(?:degrees?|°)", re.I)
+# Steps are split at punctuation, at "then" / "next" / "after that" / "finally" / "first", and at an
+# "and" that starts a new move ("walk one meter and turn left"; not "one and a half meters").
+MOVE_VERB = r"(?:walk|go|move|step|head|turn|sit|stand|get\s+up|back\s+up|come|advance|sidestep|strafe)"
+SPLIT_RE = re.compile(r"[,;!?]|(?<!\d)\.|\.(?!\d)|\b(?:and\s+then|then|next|after\s+that|afterwards|finally|first|at\s+last)\b"
+                      rf"|\band\b(?=\s+(?:then\s+)?{MOVE_VERB}\b)", re.I)
+MOVE_WORDS = re.compile(rf"\b{MOVE_VERB}\b", re.I)
+FORWARD_OR_BACK = re.compile(r"\b(?:forwards?|ahead|straight|backwards?)\b", re.I)
+# a clause that says not to move is no step ("don't walk forward", "stop going ahead")
+NOT_MOVE = re.compile(r"\b(?:don'?t|do\s+not|never|stop)\b", re.I)
 
 
-def cn_int(s: str) -> int:
+def en_number(s: str) -> float | None:
+    """'1.5', 'one and a half', 'half a', 'a', 'forty five', 'a hundred and eighty', 'zero point five'."""
+    s = s.strip().lower()
+    if re.fullmatch(r"\d+(\.\d+)?|\.\d+", s):
+        return float(s)
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)\s+and\s+a\s+half", s)
+    if m:
+        return float(m.group(1)) + 0.5
+    ws = [w for w in re.split(r"[\s-]+", s) if w]
+    if not ws:
+        return None
+    extra = 0.0
+    if ws[-3:] == ["and", "a", "half"] and len(ws) > 3:
+        ws, extra = ws[:-3], 0.5
+    if ws in (["half"], ["a", "half"], ["half", "a"], ["half", "an"], ["one", "half"]):
+        return 0.5
+    if ws in (["a", "quarter"], ["quarter"], ["quarter", "a"], ["one", "quarter"]):
+        return 0.25
+    if "point" in ws:
+        i = ws.index("point")
+        whole = _en_int(ws[:i]) if ws[:i] else 0
+        digits = [ONES.get(w) for w in ws[i + 1:]]
+        if whole is None or not digits or any(d is None or d > 9 for d in digits):
+            return None
+        return whole + float("0." + "".join(str(d) for d in digits)) + extra
+    n = _en_int(ws)
+    return None if n is None else n + extra
+
+
+def _en_int(ws: list[str]) -> int | None:
     total, num = 0, 0
-    for c in s:
-        if c in DIG:
-            num = DIG[c]
-        elif c == "十":
-            total += (num or 1) * 10
-            num = 0
-        elif c == "百":
+    for w in ws:
+        if w == "and":
+            continue
+        if w in ONES:
+            num += ONES[w]
+        elif w in TENS:
+            num += TENS[w]
+        elif w == "hundred":
             total += (num or 1) * 100
             num = 0
-    return total + num
-
-
-def cn_number(s: str) -> float | None:
-    s = s.strip()
-    if re.fullmatch(r"\d+(\.\d+)?", s):
-        return float(s)
-    if s in ("半", "一半"):
-        return 0.5
-    if "点" in s:
-        a, b = s.split("点", 1)
-        if not all(c in DIG for c in b):
+        else:
             return None
-        return cn_int(a) + float("0." + "".join(str(DIG[c]) for c in b)) if b else float(cn_int(a))
-    if s and all(c in DIG or c in "十百" for c in s):
-        return float(cn_int(s))
-    return None
+    return total + num
 
 
 def distance_m(c: str) -> float | None:
     m = DIST_RE.search(c)
     if not m:
         return None
-    n = cn_number(m.group(1))
+    n = en_number(m.group(1))
     if n is None:
         return None
     unit = m.group(2).lower()
-    d = n / 100.0 if unit in ("厘米", "公分", "cm") else n
+    d = n / 100.0 if unit.startswith("c") else n
     return d + (0.5 if m.group(3) else 0.0)
 
 
@@ -116,11 +146,11 @@ class Step:
         a = self.args
         if self.skill == "walk":
             d = a["forward_m"]
-            return f"往{'前' if d > 0 else '后'}走 {abs(d):g} 米"
+            return f"walk {'forward' if d > 0 else 'back'} {abs(d):g} m"
         if self.skill == "turn":
             d = a["deg"]
-            return "转身" if abs(d) == 180 else f"{'左' if d > 0 else '右'}转 {abs(d):g}°"
-        return {"sit": "坐下", "stand": "站起来"}.get(self.skill, self.skill)
+            return "turn around" if abs(d) == 180 else f"turn {'left' if d > 0 else 'right'} {abs(d):g}°"
+        return {"sit": "sit down", "stand": "stand up"}.get(self.skill, self.skill)
 
 
 @dataclass
@@ -131,44 +161,54 @@ class Route:
 
 def _clause(c: str) -> tuple[list[Step], str | None]:
     """One clause: its steps, or what is unclear about it."""
+    if NOT_MOVE.search(c) or re.search(r"\b(?:your|my|the)\s+head\b", c, re.I):
+        return [], None                                        # not a move, or the head's ("turn your head")
     d = distance_m(c)
     ang = ANGLE_RE.search(c)
-    if re.search(r"侧移|平移|横移|横着|侧着", c):
+    if re.search(r"\b(?:side\s*step|sidestep|sideways|strafe|crab\s+walk)\b", c, re.I):
         return [], "no_sidestep"
-    if re.search(r"转身|向后转|掉头|调头", c):
+    if re.search(r"\b(?:turn\s+(?:a)?round|turn\s+back|about\s+turn|u\s*-?\s*turn)\b", c, re.I):
         return [Step("turn", {"deg": 180.0})], None
-    m = re.search(r"(左|右)转", c)
+    m = (re.search(r"\bturn\b(?:\s+\w+){0,4}?\s+(left|right)\b", c, re.I)
+         or re.search(r"\b(left|right)\s+turn\b", c, re.I))
     if m:
-        deg = cn_number(ang.group(1)) if ang else 90.0
-        steps = [Step("turn", {"deg": deg if m.group(1) == "左" else -deg})]
-        if d is not None and re.search(r"走|前进", c[m.end():]):
-            steps.append(Step("walk", {"forward_m": d}))           # "左转走半米"
+        deg = en_number(ang.group(1)) if ang else 90.0
+        if deg is None:
+            return [], None
+        steps = [Step("turn", {"deg": deg if m.group(1).lower() == "left" else -deg})]
+        if d is not None and re.search(r"\b(?:walk|go|move|forward|ahead|straight)\b", c[m.end():], re.I):
+            steps.append(Step("walk", {"forward_m": d}))           # "turn left and walk half a meter"
         return steps, None
-    if re.search(r"后退|倒退|(往|向)后(走|退|挪)", c):
+    if re.search(r"\b(?:back\s+up|backwards?|(?:go|walk|move|step)\s+back)\b", c, re.I):
         if d is None:
             return [], "how_far"
         if d > MAX_BACK_M:
             return [], "too_far_back"
         return [Step("walk", {"forward_m": -d})], None
-    if re.search(r"(往|向)(左|右)(边|面)?(走|移|挪)", c):
+    if re.search(r"\bgo\s+(?:right\s+)?ahead\b", c, re.I) and d is None:
+        return [], None                                        # "go ahead": go on, not a route
+    if re.search(r"\b(?:go|walk|move|step|head)\b.*\b(?:left|right)\b", c, re.I):
         return [], "turn_or_side"                               # turn and walk, or sidestep?
-    if re.search(r"(往|向)?前(走|进|移|挪)|直走", c) or (d is not None and "走" in c):
+    if re.search(r"\b(?:forwards?|ahead|straight|advance)\b", c, re.I) or (
+            d is not None and re.search(r"\b(?:walk|go|move|step|head)\b", c, re.I)):
         if d is None:
             return [], "how_far"
         return [Step("walk", {"forward_m": d})], None
-    if re.search(r"坐下|坐好", c):
+    if re.search(r"\b(?:sit\s+down|sit|take\s+a\s+seat)\b", c, re.I):
         return [Step("sit")], None
-    if re.search(r"站起来|起立|站好", c):
+    if re.search(r"\b(?:stand\s+up|stand|get\s+up)\b", c, re.I):
         return [Step("stand")], None
-    return [], None                                            # filler: "好吗", "小白"
+    return [], None                                            # filler: "okay?", its name
 
 
 def parse_route(text: str) -> Route | None:
     """A spoken route as steps; None if it is no route (no walking or turning in it)."""
     steps, problem = [], None
     for c in SPLIT_RE.split(text):
-        if not c or not c.strip() or not MOVE_WORDS.search(c):
+        if not c or not c.strip():
             continue
+        if not MOVE_WORDS.search(c) and not (distance_m(c) is not None and FORWARD_OR_BACK.search(c)):
+            continue                                           # no move in it ("then half a meter forward" is one)
         s, p = _clause(c)
         steps += s
         problem = problem or p
