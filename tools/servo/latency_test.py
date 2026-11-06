@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""HL-2915 指令延迟：写目标位置（SYNC_WRITE，与 robotd 相同）到舵机响应要多久。
+"""HL-2915 command latency: how long from writing a goal position (SYNC_WRITE, same as robotd) until the servo responds.
 
-在摆杆台上做（摆杆下垂 = 0 位）：在 0 位保持，交替发 ±step 的阶跃，约 1 kHz 轮询
-位置和电流，记下每次阶跃的
-  - 电流起跳：|电流 - 阶跃前均值| > 60 mA（电机开始出力）
-  - 开始动：位置离开起点 ≥ 3 计数（0.26°）
-  - 到一半：走完 50%
-时间从写指令那一刻算，已减去半个读周期（读回的是请求和应答之间的状态）。
+Done on the pendulum rig (pendulum hanging down = position 0): hold at 0, send steps of ±step in turn, poll
+position and current at about 1 kHz, and record for each step
+  - current rise: |current - mean before the step| > 60 mA (the motor starts to push)
+  - motion start: position leaves the start by >= 3 counts (0.26°)
+  - halfway: 50% of the move done
+Times count from the moment of the write, minus half a read cycle (a read returns the state between request and reply).
 
-用法（调试板 COM11，摆杆台；先关掉 FD 上位机）：
+Usage (debug board COM11, pendulum rig; close the FD desktop app first):
     python tools/servo/latency_test.py --kps 16,32 --out training/data/bam-hl2915/latency.json
 """
 import argparse
@@ -22,7 +22,7 @@ from bam_record import (ACCEL, COUNTS_PER_RAD, GOAL_CURR, GOAL_SPEED, KD, KP, MA
 
 
 def step_once(servo, start, target, window):
-    """发一次阶跃，返回 [(t, pos, current)]，t 相对写指令。"""
+    """Send one step, return [(t, pos, current)], t relative to the write."""
     base = []
     for _ in range(20):
         st = servo.state()
@@ -66,7 +66,7 @@ def main():
     ap.add_argument("--kd", type=int, default=8)
     ap.add_argument("--current-ma", type=float, default=1300.0)
     ap.add_argument("--step-deg", type=float, default=10.0)
-    ap.add_argument("--reps", type=int, default=12, help="每个 Kp 的阶跃次数（正负交替）")
+    ap.add_argument("--reps", type=int, default=12, help="number of steps per Kp (alternating positive and negative)")
     ap.add_argument("--out")
     a = ap.parse_args()
 
@@ -74,7 +74,7 @@ def main():
     state_or_die(servo)
     zero, spread = find_zero(servo)
     if spread > 10:
-        sys.exit("摆杆还在晃，等停稳")
+        sys.exit("The pendulum is still swinging, wait until it is still")
     zero = round(zero)
     step = round(a.step_deg / 180 * 3.14159265 * COUNTS_PER_RAD)
 
@@ -101,22 +101,22 @@ def main():
                                  t_half=t_half, rtt=rtt,
                                  trace=[(round(t, 5), p, round(c, 1)) for t, p, c, _ in trace]))
                 f = lambda x: f"{x * 1000:5.1f}" if x is not None else "  -  "
-                print(f"Kp {kp:2d} #{r:2d} {start}->{target}: 电流起跳 {f(t_cur)} ms，开始动 {f(t_move)} ms，"
-                      f"到一半 {f(t_half)} ms（读一次 {rtt * 1000:.2f} ms）")
-                # 回 0 位再停稳
+                print(f"Kp {kp:2d} #{r:2d} {start}->{target}: current rise {f(t_cur)} ms, motion start {f(t_move)} ms, "
+                      f"halfway {f(t_half)} ms (one read {rtt * 1000:.2f} ms)")
+                # back to 0 and wait until still
                 servo.goal(zero)
                 time.sleep(0.6)
             results[kp] = rows
-            for key, name in (("t_current", "电流起跳"), ("t_move", "开始动"), ("t_half", "到一半")):
+            for key, name in (("t_current", "current rise"), ("t_move", "motion start"), ("t_half", "halfway")):
                 v = [x[key] for x in rows if x[key] is not None]
                 if v:
-                    print(f"  Kp {kp} {name}: 中位 {statistics.median(v) * 1000:.1f} ms，"
-                          f"范围 {min(v) * 1000:.1f}..{max(v) * 1000:.1f} ms（{len(v)}/{len(rows)}）")
+                    print(f"  Kp {kp} {name}: median {statistics.median(v) * 1000:.1f} ms, "
+                          f"range {min(v) * 1000:.1f}..{max(v) * 1000:.1f} ms ({len(v)}/{len(rows)})")
     except KeyboardInterrupt:
-        print("\n中断")
+        print("\nInterrupted")
     finally:
         servo.torque(False)
-        print("扭矩已关")
+        print("Torque off")
 
     if a.out and results:
         json.dump(dict(zero=zero, step_counts=step, kd=a.kd, current_limit_ma=a.current_ma,

@@ -1,25 +1,25 @@
 # -*- coding: utf-8 -*-
-"""关节映射对照网页：实机关节角 → 训练用的 MuJoCo 模型实时摆出同样姿态。
+"""Joint mapping check page: the MuJoCo training model shows the same pose as the real robot's joints, live.
 
-robotd 的 `robot.state` 每拍给出 15 个关节角（已套 joint_ids / signs / offsets，正是策略
-看到的那套角度）和 IMU 重力方向。这个工具把它们套到 microduck_rl 训练用的模型上渲染
-（`model/` 是从训练服务器 `robot/microduck_hl2915/` 取来的，运动学与 hardware/original 一致），
-扭矩关着时用手摆机器人，对照画面里的模型是否同向、同角度。
+robotd's `robot.state` gives 15 joint angles every tick (with joint_ids / signs / offsets applied, the same
+angles the policy sees) and the IMU gravity direction. This tool applies them to the model that microduck_rl
+trains on and renders it (`model/` comes from `robot/microduck_hl2915/` on the training server; its kinematics
+match hardware/original). With torque off, move the robot by hand and check that the model turns the same way and by the same angle.
 
-    python tools/joint_align/server.py                     # 连 OPi，http://localhost:8770
-    python tools/joint_align/server.py --demo              # 不连机器人，只看模型（滑块）
+    python tools/joint_align/server.py                     # connect to the OPi, http://localhost:8770
+    python tools/joint_align/server.py --demo              # no robot, only the model (sliders)
 
-OPi 上要有 robotd 在跑；`--start-robotd` 会替你在 OPi 上启动
-（~/robot/robotd --params robotd-test.toml）。连上时先发一次 robot.relax 关扭矩，之后只读；
-本工具从不发 enable / move。
+robotd must be running on the OPi; `--start-robotd` starts it on the OPi for you
+(~/robot/robotd --params robotd-test.toml). On connect it sends robot.relax once to turn torque off, then only reads;
+this tool never sends enable / move.
 
-标定（2026-10-25，小黑）：启动时从 OPi 读 robotd 的配置（--config）里的 joint_signs / joint_offsets。
-网页上每个关节可以"反向"（翻 sign），也可以把当前姿势"设为零位"（重算 offset）；改动马上
-用在显示和模型上（robot.state 的角度按 robotd 现用的值还原成编码器读数，再按新值换算）。
-"写入配置"先备份再改 toml 里这两行，有 --restart-cmd 就接着重启 robotd 让它生效。
+Calibration (2026-10-25, the HD-1910 robot): at start it reads joint_signs / joint_offsets from robotd's config (--config) on the OPi.
+On the page each joint can be "Reverse"d (flip the sign), or the current pose can be "Set to zero" (recompute the offset); changes apply at once
+to the display and the model (the robot.state angles are turned back into encoder readings with the values robotd uses now, then converted with the new values).
+"Write config" makes a backup, then changes these two lines in the toml; with --restart-cmd it then restarts robotd so they take effect.
 
-精调：robotd 重启不断扭矩，所以可以站在 home 上微调——每个关节的 −/+ 让它在同一指令角下实际
-往负/正方向多转 0.5°，"写入并回 home"写入、重启、再执行 --init-cmd 把机器人平滑带到新的 home：
+Fine-tuning: restarting robotd keeps the torque on, so you can fine-tune while standing in home. Each joint's −/+ makes it, for the same command angle,
+actually turn 0.5° more in the negative/positive direction. "Write and go home" writes, restarts, then runs --init-cmd to move the robot smoothly to the new home:
 
     python tools/joint_align/server.py --host orangepi@duck-1a2b.local \\
         --restart-cmd "systemctl --user restart robotd-dev" \\
@@ -45,29 +45,29 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 MODEL = os.path.join(HERE, "model", "robot_allcollisions.xml")
 MESHDIR = os.path.join(ROOT, "hardware", "original", "mjcf", "assets")
 
-# duck-control/src/model.rs 的 JOINT_NAMES 与 home pose（mouth 不在训练模型里）
+# JOINT_NAMES and home pose from duck-control/src/model.rs (mouth is not in the training model)
 JOINT_NAMES = [
     "left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle",
     "neck_pitch", "head_pitch", "head_yaw", "head_roll", "mouth",
     "right_hip_yaw", "right_hip_roll", "right_hip_pitch", "right_knee", "right_ankle",
 ]
 JOINT_CN = {
-    "left_hip_yaw": "左髋 偏航", "left_hip_roll": "左髋 横滚", "left_hip_pitch": "左髋 俯仰",
-    "left_knee": "左膝", "left_ankle": "左踝",
-    "neck_pitch": "颈 俯仰", "head_pitch": "头 俯仰", "head_yaw": "头 偏航", "head_roll": "头 横滚",
-    "mouth": "嘴",
-    "right_hip_yaw": "右髋 偏航", "right_hip_roll": "右髋 横滚", "right_hip_pitch": "右髋 俯仰",
-    "right_knee": "右膝", "right_ankle": "右踝",
+    "left_hip_yaw": "Left hip yaw", "left_hip_roll": "Left hip roll", "left_hip_pitch": "Left hip pitch",
+    "left_knee": "Left knee", "left_ankle": "Left ankle",
+    "neck_pitch": "Neck pitch", "head_pitch": "Head pitch", "head_yaw": "Head yaw", "head_roll": "Head roll",
+    "mouth": "Mouth",
+    "right_hip_yaw": "Right hip yaw", "right_hip_roll": "Right hip roll", "right_hip_pitch": "Right hip pitch",
+    "right_knee": "Right knee", "right_ankle": "Right ankle",
 }
 HOME = [0.0, -0.0873, -0.4579, -0.0049, 0.4530,
         0.3491, 0.3491, 0.0, 0.0, 0.0,
         0.0, 0.0873, 0.4579, 0.0049, -0.4530]
 
-# OPi 端：订阅 robot.state，每拍打印一行精简 JSON
+# Runs on the OPi: subscribe to robot.state and print one short JSON line per tick
 REMOTE = r'''
 import socket, json, sys
-# 先 relax：HL-2915 上电时扭矩可能是开着的，而 robotd 启动时当它是松的、不会去关。
-# 只在第一次连上时：之后的重连多半是"写入并回 home"重启了 robotd，那时机器人正被带回 home。
+# Relax first: the HL-2915 torque can be on at power-up, but robotd assumes it is off at start and does not turn it off.
+# Only on the first connect: later reconnects are most likely "Write and go home" restarting robotd, while the robot is being moved back to home.
 if "relax" in sys.argv[1:]:
     r = socket.socket(socket.AF_UNIX); r.connect("/tmp/robotd.sock")
     r.sendall(b'{"jsonrpc":"2.0","id":2,"method":"robot.relax"}\n'); r.recv(4096); r.close()
@@ -90,14 +90,14 @@ while True:
 
 
 class Live:
-    """最新一帧实机状态，由 SSH 读线程更新。"""
+    """The latest robot state, updated by the SSH reader thread."""
 
     def __init__(self):
         self.lock = threading.Lock()
         self.joints = list(HOME)
         self.gravity = [0.0, 0.0, -1.0]
         self.stamp = 0.0
-        self.status = "未连接"
+        self.status = "Not connected"
         self.policy = None
 
     def set(self, joints, gravity, policy):
@@ -108,7 +108,7 @@ class Live:
                 self.gravity = list(gravity)
             self.policy = policy
             self.stamp = time.time()
-            self.status = "已连接"
+            self.status = "Connected"
 
     def get(self):
         with self.lock:
@@ -119,7 +119,7 @@ def reader(live, host, start_robotd):
     first = True
     while True:
         if start_robotd:
-            # 整个启动包进 nohup sh -c 并关掉所有 fd，否则 ssh 会一直等后台进程的输出
+            # Wrap the whole start in nohup sh -c and close all fds, or ssh keeps waiting for the background process output
             start = ("cd ~/robot && ORT_DYLIB_PATH=$HOME/robot/onnxruntime-linux-aarch64-1.28.3/lib/libonnxruntime.so "
                      "exec ./robotd --params robotd-test.toml --socket /tmp/robotd.sock > /tmp/robotd.log 2>&1")
             try:
@@ -128,10 +128,10 @@ def reader(live, host, start_robotd):
                                 "> /dev/null 2>&1 < /dev/null & sleep 5; }"],
                                capture_output=True, timeout=30)
             except subprocess.TimeoutExpired:
-                live.status = "启动 robotd 超时"
-        live.status = "连接中…"
+                live.status = "Starting robotd timed out"
+        live.status = "Connecting…"
         try:
-            # 脚本走 stdin（python3 -），不经过远端 shell 的引号解析
+            # The script goes through stdin (python3 -), so the remote shell does not parse its quotes
             p = subprocess.Popen(["ssh", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=3", host,
                                   "python3", "-u", "-"] + (["relax"] if first else []),
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -146,15 +146,15 @@ def reader(live, host, start_robotd):
                 first = False
                 live.set(m.get("joints"), m.get("gravity"), m.get("policy"))
             err = p.stderr.read().strip().splitlines()
-            live.status = "断开：" + (err[-1] if err else "robotd 没在运行？")
+            live.status = "Disconnected: " + (err[-1] if err else "is robotd running?")
         except Exception as e:  # noqa: BLE001
-            live.status = f"断开：{e}"
+            live.status = f"Disconnected: {e}"
         time.sleep(2)
 
 
 RAD_PER_COUNT = 2 * math.pi / 4096
 
-# OPi 端：读 robotd 配置里的 signs / offsets（tomllib，Python 3.11+）
+# Runs on the OPi: read signs / offsets from robotd's config (tomllib, Python 3.11+)
 READ_CONFIG = r'''
 import json, os, sys, tomllib
 path = os.path.realpath(os.path.expanduser(sys.argv[1]))
@@ -163,7 +163,7 @@ print(json.dumps({"path": path, "signs": bus.get("joint_signs") or [1] * 15,
                   "offsets": bus.get("joint_offsets") or [0] * 15}))
 '''
 
-# OPi 端：备份后只改 joint_signs / joint_offsets 两行（各自一行的数组），上面加一行注释
+# Runs on the OPi: make a backup, then change only the joint_signs / joint_offsets lines (each a one-line array) and add a comment line above them
 WRITE_CONFIG = r'''
 import json, re, shutil, sys, time
 path, signs, offsets = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
@@ -185,18 +185,18 @@ print(path + ".bak-" + stamp)
 
 
 class Calib:
-    """robotd 现用的 signs / offsets（从 OPi 读）和网页上正在试的那一套。
+    """The signs / offsets robotd uses now (read from the OPi) and the set being tried on the page.
 
-    robot.state 的角度按现用值算出：a = s0·(raw − 2048 − o0)·k。先还原 raw − 2048 = s0·a/k + o0，
-    再按试用值换算 a' = s1·(raw − 2048 − o1)·k。"""
+    The robot.state angles use the current values: a = s0·(raw − 2048 − o0)·k. First get back raw − 2048 = s0·a/k + o0,
+    then convert with the trial values: a' = s1·(raw − 2048 − o1)·k."""
 
     def __init__(self, host, config, restart_cmd, init_cmd):
         self.host, self.config, self.restart_cmd, self.init_cmd = host, config, restart_cmd, init_cmd
         self.lock = threading.Lock()
-        self.loaded = None          # (signs, offsets) robotd 正在用的
+        self.loaded = None          # (signs, offsets) that robotd uses now
         self.signs = self.offsets = None
         self.path = None
-        self.msg = "读取配置中…"
+        self.msg = "Reading config…"
 
     def load(self):
         try:
@@ -204,13 +204,13 @@ class Calib:
                                  input=READ_CONFIG, capture_output=True, text=True, timeout=20)
             cfg = json.loads(out.stdout)
         except Exception as e:  # noqa: BLE001
-            self.msg = f"读不到配置：{e}"
+            self.msg = f"Cannot read config: {e}"
             return
         with self.lock:
             self.loaded = ([int(s) for s in cfg["signs"]], [int(o) for o in cfg["offsets"]])
             self.signs, self.offsets = list(self.loaded[0]), list(self.loaded[1])
             self.path = cfg["path"]
-            self.msg = f"已读配置 {self.path}"
+            self.msg = f"Config loaded from {self.path}"
 
     def _counts(self, i, a):
         return self.loaded[0][i] * a / RAD_PER_COUNT + self.loaded[1][i]
@@ -228,8 +228,8 @@ class Calib:
                 self.signs[i] = -self.signs[i]
 
     def zero(self, idx, joints, target=None):
-        """把这些关节当前的姿势记成 0°；给了 target（如站姿 HOME）就记成 target[i]。
-        a' = s·(raw − 2048 − o)·k = t  →  o = (raw − 2048) − s·t/k，s 用试用中的方向。"""
+        """Save the current pose of these joints as 0°; if target is given (for example the standing HOME), save it as target[i].
+        a' = s·(raw − 2048 − o)·k = t  →  o = (raw − 2048) − s·t/k, where s is the direction being tried."""
         with self.lock:
             if self.loaded:
                 for i in idx:
@@ -237,7 +237,7 @@ class Calib:
                     self.offsets[i] = int(round(self._counts(i, joints[i]) - self.signs[i] * t / RAD_PER_COUNT))
 
     def nudge(self, i, deg):
-        """同一个指令角下，让这个关节实际往正方向多转 deg 度（读数随之减小 deg）。"""
+        """For the same command angle, make this joint actually turn deg degrees more in the positive direction (the reading drops by deg)."""
         with self.lock:
             if self.loaded:
                 self.offsets[i] += self.signs[i] * int(round(math.radians(deg) / RAD_PER_COUNT))
@@ -250,36 +250,36 @@ class Calib:
     def save(self, home=False):
         with self.lock:
             if not self.loaded:
-                return False, "配置还没读到"
+                return False, "Config not read yet"
             signs, offsets = list(self.signs), list(self.offsets)
         try:
             out = subprocess.run(["ssh", "-o", "BatchMode=yes", self.host, "python3", "-", self.path,
                                   "'" + json.dumps(signs) + "'", "'" + json.dumps(offsets) + "'"],
                                  input=WRITE_CONFIG, capture_output=True, text=True, timeout=20)
         except Exception as e:  # noqa: BLE001
-            return False, f"写入失败：{e}"
+            return False, f"Write failed: {e}"
         if out.returncode != 0:
-            return False, "写入失败：" + (out.stderr.strip().splitlines() or ["?"])[-1]
-        msg = f"已写入 {self.path}（备份 {out.stdout.strip()}）"
+            return False, "Write failed: " + (out.stderr.strip().splitlines() or ["?"])[-1]
+        msg = f"Wrote {self.path} (backup {out.stdout.strip()})"
         if self.restart_cmd:
             r = subprocess.run(["ssh", "-o", "BatchMode=yes", self.host, self.restart_cmd],
                                capture_output=True, text=True, timeout=30)
             if r.returncode != 0:
-                return False, msg + "；重启 robotd 失败：" + r.stderr.strip()
+                return False, msg + "; restarting robotd failed: " + r.stderr.strip()
             with self.lock:
                 self.loaded = (signs, offsets)
-            msg += "；robotd 已重启"
+            msg += "; robotd restarted"
             if home and self.init_cmd:
-                # robotd 重启不断扭矩；它要先读到一次总线才接 init，所以失败了隔一会儿再试
+                # Restarting robotd keeps the torque on; robotd must read the bus once before it accepts init, so on failure wait a bit and retry
                 for _ in range(5):
                     time.sleep(1.5)
                     r = subprocess.run(["ssh", "-o", "BatchMode=yes", self.host, self.init_cmd],
                                        capture_output=True, text=True, timeout=30)
                     if r.returncode == 0:
-                        return True, msg + "；回 home 中"
-                return False, msg + "；回 home 失败：" + (r.stderr.strip() or r.stdout.strip())
+                        return True, msg + "; going to home"
+                return False, msg + "; going to home failed: " + (r.stderr.strip() or r.stdout.strip())
         else:
-            msg += "；robotd 重启后生效（在那之前显示仍按试用值换算）"
+            msg += "; takes effect after robotd restarts (until then the display still uses the trial values)"
         return True, msg
 
     def snapshot(self):
@@ -292,7 +292,7 @@ class Calib:
 
 
 class Renderer:
-    """单线程渲染（GL 上下文不能跨线程），请求排队。"""
+    """Renders on one thread (a GL context cannot be shared across threads); requests wait in a queue."""
 
     def __init__(self):
         self.q = queue.Queue()
@@ -337,7 +337,7 @@ class Renderer:
                 for i, n in enumerate(JOINT_NAMES):
                     if n in adr:
                         data.qpos[adr[n]] = joints[i] + (math.radians(deg) if n == bump else 0.0)
-                # 躯干姿态：把躯干系的重力方向转到世界 -z（偏航取 0）
+                # Body attitude: rotate the gravity direction in the body frame to world -z (yaw set to 0)
                 g = np.asarray(gravity, float)
                 g = g / (np.linalg.norm(g) or 1.0)
                 down = np.array([0.0, 0.0, -1.0])
@@ -348,14 +348,14 @@ class Renderer:
                 data.qpos[0:3] = [0, 0, 0.3]
                 data.qpos[3:7] = quat
                 mujoco.mj_kinematics(model, data)
-                # 全身最低点贴地（躺着、趴着也对）：几何体中心减去其包围半径
+                # Put the lowest point of the body on the floor (also works lying on the back or front): geom center minus its bounding radius
                 zmin = float(np.min(data.geom_xpos[1:, 2] - model.geom_rbound[1:] * 0.6))
                 data.qpos[2] -= zmin
                 mujoco.mj_kinematics(model, data)
                 cam.lookat[:] = [0.0, 0.0, 0.11]
                 cam.distance = 0.55
                 cam.elevation = -8.0
-                # 机器人面朝 +x：正面 = 从 +x 看过去（机器人左腿在画面右边），侧面 = 从左侧 +y 看（机器人朝画面左边），iso = 左前方
+                # The robot faces +x: front = seen from +x (the robot's left leg is on the right of the image), side = seen from the left, +y (the robot faces the left of the image), iso = front-left
                 cam.azimuth = {"front": 180.0, "side": 270.0, "iso": 215.0}.get(view, 180.0)
                 r.update_scene(data, camera=cam)
                 img = Image.fromarray(r.render())
@@ -384,7 +384,7 @@ def make_handler(live, renderer, demo, calib):
 
         def _pose(self):
             if demo:
-                return list(slider["joints"]), [0.0, 0.0, -1.0], time.time(), "演示（无机器人）", None
+                return list(slider["joints"]), [0.0, 0.0, -1.0], time.time(), "Demo (no robot)", None
             joints, *rest = live.get()
             return (calib.apply(joints), *rest)
 
@@ -401,12 +401,12 @@ def make_handler(live, renderer, demo, calib):
                 body = dict(names=JOINT_NAMES, cn=[JOINT_CN[n] for n in JOINT_NAMES], joints=joints,
                             home=HOME, gravity=gravity, pitch=pitch, roll=roll, demo=demo,
                             age=time.time() - stamp if stamp else None, status=status, policy=policy,
-                            calib=calib.snapshot() if calib else dict(ready=False, msg="演示模式"))
+                            calib=calib.snapshot() if calib else dict(ready=False, msg="Demo mode"))
                 return self._send(json.dumps(body).encode(), "application/json")
             if u.path == "/frame":
                 joints, gravity, *_ = self._pose()
                 ref = qs.get("pose", [None])[0]
-                if ref in ("zero", "home"):  # 参考姿势：躯干摆正的模型，照着摆实机
+                if ref in ("zero", "home"):  # reference pose: the model with the body level, to pose the real robot after
                     joints, gravity = ([0.0] * len(HOME) if ref == "zero" else list(HOME)), [0.0, 0.0, -1.0]
                 bump = qs.get("bump", [None])[0]
                 deg = float(qs.get("deg", ["0"])[0])
@@ -432,7 +432,7 @@ def make_handler(live, renderer, demo, calib):
                 elif u.path == "/zero":
                     joints, _, stamp, *_ = live.get()
                     if not stamp or time.time() - stamp > 1.0:
-                        ok, msg = False, "实机读数不是最新的，没记"
+                        ok, msg = False, "The robot reading is not fresh; nothing was saved"
                     else:
                         idx = [int(body["i"])] if body.get("i") is not None else range(len(JOINT_NAMES))
                         calib.zero(idx, joints, HOME if body.get("ref") == "home" else None)
@@ -453,9 +453,9 @@ def main():
     ap.add_argument("--port", type=int, default=8770)
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--start-robotd", action="store_true")
-    ap.add_argument("--config", default="~/robot/active.toml", help="OPi 上 robotd 读的配置（标定写回这里）")
-    ap.add_argument("--restart-cmd", default="", help="写入配置后在 OPi 上执行，让 robotd 重新读配置")
-    ap.add_argument("--init-cmd", default="", help="\"写入并回 home\"在重启后执行，让机器人上扭矩回 home")
+    ap.add_argument("--config", default="~/robot/active.toml", help="config that robotd reads on the OPi (calibration is written back here)")
+    ap.add_argument("--restart-cmd", default="", help="run on the OPi after writing the config, so robotd reads the config again")
+    ap.add_argument("--init-cmd", default="", help="run by \"Write and go home\" after the restart, so the robot turns torque on and goes to home")
     a = ap.parse_args()
 
     live = Live()

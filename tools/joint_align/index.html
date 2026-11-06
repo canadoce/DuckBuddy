@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>关节对照</title>
+<title>Joint alignment</title>
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--ink:#1d232b;--muted:#6b7480;--line:#e3e6ea;--ok:#1f9d55;--warn:#d97706;--bad:#dc2626;--acc:#2563eb;--sel:#eef4ff}
 @media (prefers-color-scheme:dark){:root{--bg:#14171b;--card:#1d2127;--ink:#e6e9ed;--muted:#9aa3ad;--line:#2c323a;--sel:#1e2a40}}
@@ -44,57 +44,57 @@ button:disabled{opacity:.45;cursor:default}
 </head>
 <body>
 <header>
-  <h1>关节对照：实机 → 训练模型</h1>
+  <h1>Joint alignment: real robot → training model</h1>
   <span id="status">…</span>
 </header>
 <main>
   <section>
     <div class="views">
-      <figure><img id="front" alt="正面"><figcaption>正面（机器人朝你，它的左腿在画面右边）</figcaption></figure>
-      <figure><img id="side" alt="侧面"><figcaption>左侧面（从机器人左边看，机器人朝左）</figcaption></figure>
-      <figure><img id="bump" alt="正方向预览"><figcaption id="bumpcap">点右侧表格中的关节：这里显示该关节再往<b>正方向</b>转 20° 的样子</figcaption></figure>
+      <figure><img id="front" alt="Front"><figcaption>Front (the robot faces you; its left leg is on the right side of the image)</figcaption></figure>
+      <figure><img id="side" alt="Side"><figcaption>Left side (seen from the robot's left; the robot faces left)</figcaption></figure>
+      <figure><img id="bump" alt="Positive direction preview"><figcaption id="bumpcap">Click a joint in the table on the right: this image shows that joint turned 20° more in the <b>positive direction</b></figcaption></figure>
     </div>
-    <h3 id="refh" style="margin:14px 0 8px;font-size:15px">参考姿势：零位（照着摆实机）</h3>
+    <h3 id="refh" style="margin:14px 0 8px;font-size:15px">Reference pose: zero (pose the real robot like this)</h3>
     <div class="views">
-      <figure><img id="ref-front" alt="参考正面"><figcaption>正面</figcaption></figure>
-      <figure><img id="ref-side" alt="参考侧面"><figcaption>左侧面</figcaption></figure>
-      <figure><img id="ref-iso" alt="参考左前方"><figcaption>左前方</figcaption></figure>
+      <figure><img id="ref-front" alt="Reference front"><figcaption>Front</figcaption></figure>
+      <figure><img id="ref-side" alt="Reference side"><figcaption>Left side</figcaption></figure>
+      <figure><img id="ref-iso" alt="Reference front-left"><figcaption>Front-left</figcaption></figure>
     </div>
     <p id="refnote" class="help"></p>
     <div class="help">
-      <b>怎么用</b>（扭矩关着，用手摆机器人）：
+      <b>How to use</b> (torque off, move the robot by hand):
       <ol>
-        <li>先把机器人摆成<b>零位</b>（腿伸直、头摆正，和标定时一样），"参考"选零位：所有关节应接近 0°。</li>
-        <li>逐个关节：在表格里点它，看第三张图它的正方向往哪转；再用手把实机这个关节往同一方向转 —— 前两张图里的模型应该跟着同向转，读数变大。</li>
-        <li>摆成站姿（home），"参考"选 home：差值应在几度以内，躯干俯仰 / 横滚应接近 0。</li>
+        <li>First put the robot in the <b>zero pose</b> (legs straight, head straight, the same as during calibration) and set "Reference" to Zero: all joints should be close to 0°.</li>
+        <li>One joint at a time: click it in the table and see in the third image which way its positive direction turns. Then turn that joint on the real robot by hand the same way. The model in the first two images should turn the same way, and the reading should go up.</li>
+        <li>Put the robot in the standing pose (home) and set "Reference" to home: the differences should be within a few degrees, and body pitch / roll should be close to 0.</li>
       </ol>
-      标定：方向反了，点那一行的<b>反向</b>（马上生效，再掰一下确认）；把关节摆到零位后点<b>所选关节设为零位</b>
-      （或全身摆好点<b>全部设为零位</b>）。也可以按站姿标："参考"选站姿 home，扭矩关着把机器人摆成站姿放在桌上
-      （脚底贴平、躯干水平看下面的 IMU 俯仰 / 横滚≈0），按钮变成<b>设为站姿角度</b>：把当前姿势记成 home 的角度（比如髋俯仰 −26.2°），
-      而不是 0°。站在 home 上精调：零点两边的 <b>−/+</b> 让这个关节在同一指令角下
-      实际往负/正方向多转 0.5°（看第三张图的正方向），再点<b>写入并回 home</b>看效果（robotd 重启不断扭矩）。嘴没有模型：张嘴读数应变大，闭到底设为零位。改过的值标成橙色，
-      <b>写入配置</b>才会存到机器人上（先备份）。<br>
-      颜色：差值 &lt;3° 绿，&lt;8° 黄，其余红。
+      Calibration: if a direction is wrong, click <b>Reverse</b> on that row (it takes effect at once; move the joint again to check). Put the joint in the zero pose, then click <b>Set selected joint to zero</b>
+      (or pose the whole body and click <b>Set all to zero</b>). You can also calibrate in the standing pose: set "Reference" to Standing home, and with torque off put the robot in the standing pose on the table
+      (feet flat, body level: the IMU pitch / roll below ≈0). The buttons change to <b>Set ... to standing angle</b>: they save the current pose as the home angles (for example hip pitch −26.2°),
+      not as 0°. Fine-tune while standing in home: the <b>−/+</b> on each side of the zero value make this joint, for the same command angle,
+      actually turn 0.5° more in the negative/positive direction (see the positive direction in the third image). Then click <b>Write and go home</b> to see the result (restarting robotd keeps the torque on). The mouth has no model: opening the mouth should make the reading go up; close it fully and set it to zero. Changed values are shown in orange.
+      They are saved on the robot only when you click <b>Write config</b> (a backup is made first).<br>
+      Colors: difference &lt;3° green, &lt;8° yellow, otherwise red.
     </div>
   </section>
   <section class="card">
-    <div class="ref">参考：
-      <button id="r-zero" class="on">零位</button>
-      <button id="r-home">站姿 home</button>
+    <div class="ref">Reference:
+      <button id="r-zero" class="on">Zero</button>
+      <button id="r-home">Standing home</button>
     </div>
     <div class="cal">
-      <button id="z-sel" disabled>所选关节设为零位</button>
-      <button id="z-all">全部设为零位</button>
-      <button id="c-reset">撤销改动</button>
-      <button id="c-save" class="save">写入配置</button>
-      <button id="c-home" class="save" hidden>写入并回 home</button>
+      <button id="z-sel" disabled>Set selected joint to zero</button>
+      <button id="z-all">Set all to zero</button>
+      <button id="c-reset">Undo changes</button>
+      <button id="c-save" class="save">Write config</button>
+      <button id="c-home" class="save" hidden>Write and go home</button>
     </div>
     <div id="calmsg"></div>
     <table>
-      <thead><tr><th>关节</th><th>实机°</th><th>参考°</th><th>差°</th><th>方向</th><th>零点</th><th id="demoh" hidden>演示</th></tr></thead>
+      <thead><tr><th>Joint</th><th>Robot°</th><th>Ref°</th><th>Diff°</th><th>Direction</th><th>Zero</th><th id="demoh" hidden>Demo</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
-    <div class="imu"><span>躯干俯仰 <b id="pitch">–</b>°（正=前倾）</span><span>横滚 <b id="roll">–</b>°</span></div>
+    <div class="imu"><span>Body pitch <b id="pitch">–</b>° (positive = leaning forward)</span><span>Roll <b id="roll">–</b>°</span></div>
   </section>
 </main>
 <script>
@@ -102,19 +102,19 @@ let ref = "zero", sel = null, st = null, demoPose = null;
 const $ = id => document.getElementById(id);
 $("r-zero").onclick = () => { ref = "zero"; $("r-zero").classList.add("on"); $("r-home").classList.remove("on"); refImgs(); zLabels(); draw(); };
 $("r-home").onclick = () => { ref = "home"; $("r-home").classList.add("on"); $("r-zero").classList.remove("on"); refImgs(); zLabels(); draw(); };
-// "设为…"按当前参考：零位记成 0°，站姿 home 记成 home 的角度
-const refWord = () => ref === "zero" ? "零位" : "站姿角度";
+// "Set ... to" follows the current reference: Zero saves 0°, Standing home saves the home angles
+const refWord = () => ref === "zero" ? "zero" : "standing angle";
 function zLabels() {
   const i = st && sel ? st.names.indexOf(sel) : -1;
-  $("z-sel").textContent = i >= 0 ? `${st.cn[i]} 设为${refWord()}` : `所选关节设为${refWord()}`;
-  $("z-all").textContent = `全部设为${refWord()}`;
+  $("z-sel").textContent = i >= 0 ? `Set ${st.cn[i]} to ${refWord()}` : `Set selected joint to ${refWord()}`;
+  $("z-all").textContent = `Set all to ${refWord()}`;
 }
 const REF_NOTE = {
-  zero: "零位：两腿伸直、竖直向下，脚掌与小腿垂直、脚尖朝正前；髋不内外扭、不外张；脖子、头摆正不歪；嘴闭到底。",
-  home: "站姿 home：两腿伸直（膝 ≈0°），整条腿向前斜约 26°（髋俯仰 ±26°），脚在髋的前方，踝 ±26° 把脚底放平；髋横滚 ±5°、偏航 0；脖子那节往后仰 20°、头再往前低 20°，头和零位时一样水平。躯干水平，两脚前后对齐。",
+  zero: "Zero: both legs straight and pointing straight down, feet at a right angle to the shins, toes pointing straight forward; hips not twisted in or out and not spread out; neck and head straight, not tilted; mouth fully closed.",
+  home: "Standing home: both legs straight (knee ≈0°), each whole leg tilted forward about 26° (hip pitch ±26°), feet in front of the hips, ankles ±26° so the soles are flat; hip roll ±5°, yaw 0; the neck tilted back 20° and the head then tilted forward 20°, so the head is level, the same as in the zero pose. Body level, both feet lined up front to back.",
 };
 function refImgs() {
-  $("refh").textContent = `参考姿势：${ref === "zero" ? "零位" : "站姿 home"}（照着摆实机）`;
+  $("refh").textContent = `Reference pose: ${ref === "zero" ? "zero" : "standing home"} (pose the real robot like this)`;
   $("refnote").textContent = REF_NOTE[ref];
   ["front", "side", "iso"].forEach(v => loadImg("ref-" + v, `/frame?view=${v}&pose=${ref}`));
 }
@@ -128,9 +128,9 @@ function draw() {
       const tr = document.createElement("tr");
       tr.dataset.i = i;
       tr.innerHTML = `<td>${st.cn[i]}<br><small style="color:var(--muted)">${n}</small></td><td class="v"></td><td class="r"></td><td class="d"></td>` +
-        `<td><button class="flip" title="翻转这个关节的方向">反向</button> <span class="s"></span></td>` +
-        `<td><button class="nm" title="同一指令角下，实际往负方向多转 0.5°">−</button> <span class="o"></span> ` +
-        `<button class="np" title="同一指令角下，实际往正方向多转 0.5°">+</button></td>` +
+        `<td><button class="flip" title="Reverse the direction of this joint">Reverse</button> <span class="s"></span></td>` +
+        `<td><button class="nm" title="For the same command angle, actually turn 0.5° more in the negative direction">−</button> <span class="o"></span> ` +
+        `<button class="np" title="For the same command angle, actually turn 0.5° more in the positive direction">+</button></td>` +
         (st.demo ? `<td><input type="range" min="-90" max="90" step="1" value="${Math.round(deg(st.joints[i]))}"></td>` : "");
       tr.querySelector(".flip").onclick = () => post("/flip", {i});
       tr.querySelector(".nm").onclick = () => post("/nudge", {i, deg: -0.5});
@@ -163,12 +163,12 @@ function draw() {
       sc.className = "s" + (c.signs[i] !== c.loaded_signs[i] ? " chg" : "");
       oc.textContent = c.offsets[i];
       oc.className = "o" + (c.offsets[i] !== c.loaded_offsets[i] ? " chg" : "");
-      oc.title = `原值 ${c.loaded_offsets[i]}`;
+      oc.title = `Original value ${c.loaded_offsets[i]}`;
     }
   });
   const c = st.calib;
   const dirty = c.ready && c.signs.some((s, i) => s !== c.loaded_signs[i] || c.offsets[i] !== c.loaded_offsets[i]);
-  $("calmsg").textContent = (c.msg || "") + (dirty ? " · 有未写入的改动" : "");
+  $("calmsg").textContent = (c.msg || "") + (dirty ? " · changes not written yet" : "");
   ["z-all", "c-reset", "c-save"].forEach(id => $(id).disabled = !c.ready);
   $("c-save").disabled = !dirty;
   $("c-home").hidden = !c.can_home;
@@ -178,7 +178,7 @@ function draw() {
   $("roll").textContent = st.roll.toFixed(1);
   const s = $("status");
   const fresh = st.demo || (st.age !== null && st.age < 1.0);
-  s.textContent = st.status + (st.age !== null && !st.demo ? `（${st.age.toFixed(1)} s 前）` : "") + (st.policy ? ` · policy=${st.policy}` : "");
+  s.textContent = st.status + (st.age !== null && !st.demo ? ` (${st.age.toFixed(1)} s ago)` : "") + (st.policy ? ` · policy=${st.policy}` : "");
   s.className = fresh ? "ok" : "bad";
 }
 
@@ -187,23 +187,23 @@ async function post(path, body) {
     const r = await (await fetch(path, {method: "POST", body: JSON.stringify(body || {})})).json();
     if (r.msg) $("calmsg").textContent = r.msg;
     if (!r.ok) alert(r.msg);
-  } catch (e) { alert("网页服务没响应"); }
+  } catch (e) { alert("The web server does not respond"); }
 }
 $("z-sel").onclick = () => sel && post("/zero", {i: st.names.indexOf(sel), ref});
-$("z-all").onclick = () => confirm(ref === "zero" ? "把全身当前的姿势都记成零位？"
-  : "把全身当前的姿势都记成站姿 home 的角度？（机器人要摆成站姿：脚底贴平、躯干水平）") && post("/zero", {ref});
+$("z-all").onclick = () => confirm(ref === "zero" ? "Save the current pose of the whole body as zero?"
+  : "Save the current pose of the whole body as the standing home angles? (The robot must be in the standing pose: feet flat, body level)") && post("/zero", {ref});
 $("c-reset").onclick = () => post("/reset");
-$("c-save").onclick = () => confirm("把方向和零点写入机器人的配置（先备份）？") && post("/save");
+$("c-save").onclick = () => confirm("Write the directions and zero values to the robot's config (a backup is made first)?") && post("/save");
 let busy = false;
 $("c-home").onclick = async () => {
-  if (!confirm("写入配置、重启 robotd，然后上扭矩回 home（机器人会动）？")) return;
-  busy = true; $("c-home").textContent = "写入、回 home 中…";
+  if (!confirm("Write the config, restart robotd, then turn the torque on and go to home (the robot will move)?")) return;
+  busy = true; $("c-home").textContent = "Writing, going to home…";
   await post("/save", {home: true});
-  busy = false; $("c-home").textContent = "写入并回 home";
+  busy = false; $("c-home").textContent = "Write and go home";
 };
 
 async function poll() {
-  try { st = await (await fetch("/state")).json(); draw(); } catch (e) { $("status").textContent = "网页服务没响应"; }
+  try { st = await (await fetch("/state")).json(); draw(); } catch (e) { $("status").textContent = "The web server does not respond"; }
   setTimeout(poll, 150);
 }
 function loadImg(id, url) {
@@ -215,7 +215,7 @@ async function frames() {
   await loadImg("side", `/frame?view=side&t=${t}`);
   if (sel) {
     await loadImg("bump", `/frame?view=iso&bump=${sel}&deg=20&t=${t}`);
-    $("bumpcap").innerHTML = `<b>${st ? st.cn[st.names.indexOf(sel)] : sel}</b> 再往正方向转 20° 的样子（左前方视角）`;
+    $("bumpcap").innerHTML = `<b>${st ? st.cn[st.names.indexOf(sel)] : sel}</b> turned 20° more in the positive direction (front-left view)`;
   }
   setTimeout(frames, 60);
 }

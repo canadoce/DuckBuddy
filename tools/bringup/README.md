@@ -1,72 +1,120 @@
-# bringup —— 装机 / 维修工具（网页）
+# bringup: build / repair tool (web page)
 
-装好或修好一台 DuckBuddy（MicroDuck）后用的工具，网页里有四个页签：
+A tool to use after you build or repair a DuckBuddy (MicroDuck). The web page has four tabs:
 
-1. **舵机**：
-   - **新舵机批量配置向导**（接飞特 USB 调试板）：一只一只接上去，自动完成改 ID、限位 0/4095、模式 0、卸载条件（HD-1910 写 5，HL-2915 写 13）、改成 500k 并上锁、读回核对。第一只会让你断电重上电，验证 EEPROM 真的存住了；每只最后回中到 2048 并保持扭矩，装好舵盘再松。支持串成链（ID 倒着分，做法同 `tools/servo/setup_ids.py`）和每只单独接两种接法，中断后重新开始不会撞号。
-   - **关节映射**（装好以后，机器人总线或 USB 调试板）：逐只摆动 ±8°，看哪个关节动了就点哪个关节；点完再“左右对照”摆一遍核对。然后二选一：按选定顺序（关节顺序 1–15、同小白、配置里的、自定义）批量改 ID，先全部挪到临时号 160 + 新 ID 再落位，互换也行；或者不改 ID，把 `joint_ids` 写进机器人配置（先备份）。
-   - 单只操作：扫描总线，改 ID / 改波特率，回中，读写关键寄存器，摆动测试。
-   - **当前位置设为中位**：写 EEPROM 31（位置校正，BIT15 符号位），把舵机现在的位置记成 2048。0/4095 的跳变点和目标位置会一起平移，所以舵盘装偏了、或关节零位的读数靠近跳变点时，不用拆舵盘。10-31 在 HL-2915（固件 3.45）上台架实测通过：断电保存、跨原跳变点读数连续、回中和摆动都按新坐标到位；STS 的“写 40=128”在它上面没反应。HD-1910 还没测过。
-2. **零位标定**：装配后标出 `[bus] joint_signs` / `joint_offsets`。直接嵌入 `tools/joint_align`（同一份代码、同一个页面）。
-3. **IMU 固件**：在电脑上构建 `firmware/imu-feetech`，用 ST-Link 经 PDB J2 烧录，再经机器人总线读 ID 200 核对。
-4. **整机测试**：舵机总线（每个 ID 都应答、SYNC_READ 错误率）、IMU、麦克风、喇叭、ToF、摄像头。每项给出通过 / 不通过和测量值，可以导出 JSON 报告。
+1. **Servos**:
+   - **New-servo setup wizard** (on the Feetech USB board): plug the servos in one at a time. For each one it sets the ID, the limits 0/4095, mode 0 and the unload conditions (5 on the HD-1910, 13 on the HL-2915), changes the baud rate to 500k, locks the EEPROM and reads everything back to check it. For the first servo it asks you to power off and on, to check that the EEPROM really kept the values. At the end each servo moves to center (2048) and holds torque; fit the horn, then release it. Two wirings work: a chain (IDs are given in reverse, the same way as `tools/servo/setup_ids.py`) or one servo at a time. Starting again after an interruption does not give two servos the same ID.
+   - **Joint mapping** (after assembly, on the robot bus or the USB board): each servo wiggles ±8° in turn, and you click the joint that moved. When all are done, a "left / right check" wiggles them again to confirm. Then pick one of two: change the IDs in bulk to a chosen order (joint order 1–15, same as the HL-2915 robot, the order in the config, or your own); all servos first move to a temporary ID 160 + new ID and then to the new ID, so swaps work too. Or keep the IDs and write `joint_ids` into the robot config (a backup is made first).
+   - Single-servo actions: scan the bus, set ID / baud rate, center, read and write the key registers, wiggle test.
+   - **Set current position as center**: writes EEPROM 31 (position correction, BIT15 sign bit) so the servo's present position reads 2048. The 0/4095 wrap point and the goal position shift with it. So when a horn was fitted off center, or a joint's zero reading is near the wrap point, you do not have to take the horn off. Bench-tested on 10-31 on the HL-2915 (firmware 3.45): kept over power off, readings stay continuous across the old wrap point, and center and wiggle reach the right places in the new coordinates. The STS method "write 40=128" does nothing on it. Not tested on the HD-1910 yet.
+2. **Zero calibration**: finds `[bus] joint_signs` / `joint_offsets` after assembly. It embeds `tools/joint_align` as is (same code, same page).
+3. **IMU firmware**: builds `firmware/imu-feetech` on the computer, flashes it with an ST-Link on PDB J2, then reads ID 200 over the robot bus to check it.
+4. **Whole-robot test**: servo bus (every ID answers, SYNC_READ error rate), IMU, mic, speaker, ToF, camera. Each item shows pass / fail and the measured values. The results can be exported as a JSON report.
 
-## 启动
+## Start
 
 ```bash
-python tools/bringup/app.py --host orangepi@duck-1a2b.local              # 系统镜像起的主机名 duck-XXXX
-python tools/bringup/app.py --host orangepi@192.168.1.50 --com COM11      # 用 IP，同时用飞特 USB 调试板
+python tools/bringup/app.py --host orangepi@duck-1a2b.local              # the system image's host name is duck-XXXX
+python tools/bringup/app.py --host orangepi@192.168.1.50 --com COM11      # by IP, and with the Feetech USB board
+python tools/bringup/app.py --bench pi@192.168.1.166                       # Raspberry Pi test bench, no robot
 ```
 
-浏览器打开 <http://localhost:8780>，零位标定用 8781。每个页签顶部有一段可折叠的图文教程，写了操作步骤、HD-1910 / HL-2915 各自的寄存器取值，以及不通过时该查哪里。加 `--listen 0.0.0.0` 后，局域网里的手机也能打开。
+Open <http://localhost:8780> in the browser (`--port` changes it); the zero calibration uses the next port, 8781. At the top of each tab there is a tutorial with pictures that you can fold away. It lists the steps, the register values for the HD-1910 and the HL-2915, and what to check when a test fails. With `--listen 0.0.0.0`, a phone on the same LAN can open the page too.
 
-前提：
+Requirements:
 
-- 机器人要能免密 ssh；机器人上有 `python3` 和 `python3-serial`，不需要另装东西。
-- 电脑上有 `pyserial`。零位页还需要 `mujoco`、`numpy`、`Pillow`（和 joint_align 一样）。IMU 页还需要 `cargo` 和 `probe-rs`（`cargo install probe-rs-tools --locked`）。
+- ssh to the robot must work without a password. The robot needs `python3` and `python3-serial`, nothing else.
+- The computer needs `pyserial`. The zero calibration tab also needs `mujoco`, `numpy` and `Pillow` (the same as joint_align). The IMU tab also needs `cargo` and `probe-rs` (`cargo install probe-rs-tools --locked`).
 
-其他参数：
+Other options:
 
-| 参数 | 默认值 | 说明 |
+| Option | Default | Meaning |
 |---|---|---|
-| `--config` | `~/robot/active.toml` | robotd 的配置文件，零位标定写回这个文件 |
-| `--unit` | `robotd-dev` | 停止 / 启动 robotd 用的 `systemctl --user` 单元 |
-| `--restart-cmd` | `systemctl --user restart robotd-dev` | 写入零位后执行，让 robotd 重读配置 |
-| `--init-cmd` | `robotctl robot init` | 零位页的“写入并回 home”在重启后执行 |
+| `--config` | `~/robot/active.toml` | robotd's config file; the zero calibration writes back to this file |
+| `--unit` | `robotd-dev` | the `systemctl --user` unit used to stop / start robotd |
+| `--restart-cmd` | `systemctl --user restart robotd-dev` | run after the zero offsets are written, so robotd reloads its config |
+| `--init-cmd` | `cd ~/robot && ./robotctl robot init --robot-socket /tmp/robotd.sock` | run after the restart by "Write and go home" on the zero calibration tab |
+| `--bench` | none | ssh address of a Raspberry Pi test bench (see below), used in place of the USB board. With `--bench`, `--host` can be left out; the zero calibration and the whole-robot test then do not work |
+| `--bench-port` | `/dev/serial0` | the bench's servo UART |
 
-## 结构
+## Raspberry Pi test bench (in place of the Feetech USB board)
+
+A Raspberry Pi with the Robot HAT E1 (`elec_RPI_Robot_HAT`) can do everything the USB board does:
+the new-servo wizard, scan, set ID / baud rate, center, wiggle, register reads and writes, and the
+joint mapping on a servo chain plugged into the HAT. The Pi's UART runs 1 Mbit/s exactly (its
+UART clock is 48 MHz), so it talks to factory servos, which the Orange Pi's UART7 cannot do.
+
+`agent.py --usb` runs on the Pi over ssh, the same way as on the robot. Nothing is copied to the Pi.
+
+Set up the Pi once:
+
+- Raspberry Pi OS. The servo UART on pins 8/10 is the PL011 (`/dev/serial0` → `ttyAMA0`):
+  in `/boot/config.txt` (`/boot/firmware/config.txt` on newer releases) set `enable_uart=1` and
+  `dtoverlay=disable-bt`, and leave `console=serial0,...` out of `cmdline.txt`.
+- `sudo apt install python3-serial`.
+- ssh with a key from the computer (no password).
+- Servo power on the HAT: a 3S battery for the HL-2915 (the HAT's D5 must be the SMBJ15A, see
+  `elec_RPI_Robot_HAT/docs/12V_battery_swap.md`); a 2S battery for the HD-1910. Plug the servo into
+  a 3-pin servo connector (J13 / J14, pin order 1 GND · 2 battery · 3 DATA).
+
+Then start the app with `--bench user@pi-address` (add `--host` too when the robot is on as well).
+"Raspberry Pi test bench" is first in the overview tab's port list and is selected at start-up; the
+pages that say "USB board" then use the bench.
+
+### Factory servos in a robot that is already built
+
+Factory servos are all ID 1 at 1 Mbit/s, so they must still be set up one at a time. With the servos
+mounted but not cabled yet:
+
+- Take the robot's battery out, if it has one in. The bench HAT powers the servos.
+- In the wizard pick wiring "One at a time" and ID order `1-15`. Then plug the bench's servo cable
+  into the servos in `joint_ids` order (L-yaw, roll, pitch, knee, ankle, neck, head pitch, yaw, roll,
+  mouth, R-yaw, roll, pitch, knee, ankle), one at a time, as the wizard asks. Each servo then has
+  the ID of its joint, so `joint_ids` is `[1, 2, ..., 15]`.
+- The battery on the bench HAT's XT60 powers the HAT, the Pi and the servos together; there is no
+  separate servo switch. Turn the bench off (battery out) before you plug or unplug a servo, and
+  wait for the Pi to boot again (about a minute) before you click. Plugging with power on can spark.
+- **Clear "Center to fit horn".** The horns are already on: centering would drive the
+  joint to 2048, which can be past its stop.
+- Then, with the robot's own board: the joint mapping (to check `joint_ids` and the signs), "Set
+  current position as center" for any joint whose zero reading is near the 0/4095 wrap point, and
+  the zero calibration.
+
+## Layout
 
 ```
-浏览器 ⇄ app.py（电脑） ─ ssh ─ agent.py（机器人：/dev/ttyS7 500k，以及音频 / ToF / 摄像头）
-                       ├─ agent.py --usb（电脑：飞特 USB 调试板，COMx）
-                       ├─ tools/joint_align（零位标定，端口 +1）
-                       └─ cargo / probe-rs（IMU 固件）
+browser ⇄ app.py (computer) ─ ssh ─ agent.py (robot: /dev/ttyS7 500k, plus audio / ToF / camera)
+                            ├─ agent.py --usb (computer: Feetech USB board, COMx)
+                            ├─ agent.py --usb on the test bench Pi over ssh (/dev/serial0, 1M), with --bench
+                            ├─ tools/joint_align (zero calibration, port +1)
+                            └─ cargo / probe-rs (IMU firmware)
 ```
 
-- `agent.py` 每次连接时经 ssh 的 stdin 送到机器人上运行，所以机器人上没有要部署的文件。它一行收一个 JSON 请求、回一行 JSON 应答，也可以在机器人上手动运行：`python3 agent.py`，然后在 stdin 里敲请求。
-- 出厂舵机是 1M。OPi 的 UART7 设成 1M 时实际只有 750k，所以新舵机改 ID、改波特率要接飞特 USB 调试板（CH343，总览页里选串口）。FD 上位机开着时会独占这个串口。
+- On each connection `agent.py` is sent to the robot on ssh's stdin and runs there, so there are no files to deploy on the robot. It takes one JSON request per line and answers with one JSON line. You can also run it on the robot by hand: `python3 agent.py`, then type requests on stdin.
+- Factory servos run at 1M. The OPi's UART7 set to 1M really runs at only 750k, so a new servo's ID and baud rate must be set with the Feetech USB board (CH343, pick its serial port on the overview tab) or the test bench. The FD software holds this serial port while it is open.
 
-## 安全规则（工具里已经做了的）
+## Safety rules (already built into the tool)
 
-- **robotd 占着总线。** 它在跑时，舵机页、总线测试和 IMU 测试一律拒绝执行。总览页里可以停掉它：如果它是 `robotd-dev` 单元起的，就用 systemctl 停；否则只按页面上显示的那个 PID 停。**停 robotd 不会卸力。**
-- 每个会让舵机动或上扭矩的操作（摆动、回中、上扭矩、写 40/41/42/44/46）都要先在网页上确认“托好了”。
-- 写目标时 42..47 一起写（目标位置 + 44 + 46）。原因是 HD-1910 不重写 46 会出现零电流卡住。
-- 舵机读数超出 0..4095（多圈计数）时拒绝上扭矩。多圈计数只有断舵机电才能清掉。
-- 摆动测试：以当前位置为中心，摆 ±摆幅后回到原位，然后松扭矩。会跨过 0/4095 的那一侧跳过。限流默认 400 mA；电流持续超过 1.5 A，或位置偏离 15°，就立即切扭矩。
-- 回中：转到同一圈里最近的 2048 并保持扭矩，用来装舵盘，只适用于还没装进关节的舵机。如果越走越远或过流，就切扭矩。
-- 页头的“全部卸力”：robotd 在跑时发 `robot.relax`，否则在总线上广播“扭矩开关=0”。
-- 写 EEPROM 时先解锁（55=0），写完再上锁。改 ID 前会先确认新 ID 没被占用；IMU 的 200 不能用。
+- **robotd holds the bus.** While it runs, the servo tab, the bus test and the IMU test on the PDB board (ID 200) all refuse to run. The BNO055 test reads I2C, not the servo bus, so it runs alongside robotd. The overview tab can stop it: if it was started by the `robotd-dev` unit, it is stopped with systemctl; otherwise only the PID shown on the page is stopped. **Stopping robotd does not relax the servos.**
+- Every action that moves a servo or turns torque on (wiggle, center, torque on, writes to 40/41/42/44/46) needs a "held" confirmation on the page first.
+- Goal writes always cover 42..47 together (goal position + 44 + 46). The reason: the HD-1910 sticks at zero current if 46 is not rewritten.
+- Torque on is refused when a servo reads outside 0..4095 (multi-turn count). Only powering the servo off clears the multi-turn count.
+- Wiggle test: swings ±amplitude around the present position, comes back, then releases torque. A side that would cross 0/4095 is skipped. The current limit is 400 mA by default; torque goes off at once if the current stays above 1.5 A or the position drifts 15° off.
+- Center: moves to the nearest 2048 in the same turn and holds torque, for fitting the horn. Only for servos not yet built into a joint. Torque goes off if it moves further away or the current is too high.
+- "Relax all" in the page header: sends `robot.relax` while robotd runs; otherwise it broadcasts "torque switch = 0" on the bus.
+- EEPROM writes unlock first (55=0) and lock again after. Before an ID change the tool checks that the new ID is free; the IMU's 200 cannot be used.
 
-## 整机测试的判据
+## Whole-robot test criteria
 
-| 项目 | 做法 | 通过条件 |
+| Item | Method | Pass when |
 |---|---|---|
-| 舵机总线 | 配置里的 `joint_ids` 逐个 PING，再按 robotd 的方式做 N 轮 SYNC_READ（地址 56 起 15 字节，IMU 排在最后） | 全部应答；错误率 ≤ 0.5%；状态位全 0；没有多圈读数 |
-| IMU | 读 ID 200 的版本、型号、56..70 块和 90 起的诊断计数，持续 2 秒 | 型号 0x16D6；标志 = 3；融合输出 90–150 Hz；\|q\| ≈ 1；静止时陀螺噪声 < 1 dps、零偏 < 5 dps；板上没有接收错误。俯仰 / 横滚按 `[bus] imu_axes` 换算到躯干系 |
-| 麦克风 | 一边放静音一边录 4 秒（先放后录，否则录音会整段顶满），录音期间拍手或说话 | 两路都不是全 0；直流偏移 < 3000；削顶 < 2%；峰值 ≥ 4 倍底噪 |
-| 喇叭 | 放 1 kHz（−12 dBFS）并同时录音，比较有声窗口和安静窗口里 1 kHz 的能量；再问人耳听没听到 | 高出 ≥ 15 dB，并且人耳听到 |
-| ToF | 读 tofd 的 `tof.stream`；tofd 没在跑时，临时起一个（`--bus` 取自 tofd-dev.service，默认 /dev/i2c-2），测完只停这一个 | ≥ 10 Hz；有效区 ≥ 32/64 |
-| 摄像头 | 找名字是 `vin_video*` 的节点，用 `duckcam --half` 抓 45 帧（ISP 自动曝光） | ≥ 10 fps；亮度不是全黑或全白；画面有纹理。附缩略图 |
+| Servo bus | PING each of the config's `joint_ids`, then N rounds of SYNC_READ the way robotd does it (15 bytes from address 56, IMU last; the IMU is left out when `[bus] imu_source = "bno055"`) | all answer; error rate ≤ 0.5%; all status bits 0; no multi-turn readings |
+| IMU (PDB board, ID 200) | read ID 200's version, model, the 56..70 block and the diagnostic counters from 90, for 2 seconds | model 0x16D6; flags = 3; fusion output 90–150 Hz; \|q\| ≈ 1; gyro noise < 1 dps and bias < 5 dps while still; no receive errors on the board. Pitch / roll are converted to the trunk frame with `[bus] imu_axes` |
+| IMU (BNO055, `[bus] imu_source = "bno055"`) | read the BNO055 over I2C (`[bus] imu_i2c`, default `/dev/i2c-0`; address `imu_i2c_address`, default 0x28) in place of ID 200, for 2 seconds. If the chip is not in IMU fusion mode and robotd is not running, the test sets that mode first | chip ID 0xA0; mode IMU fusion (0x08); samples change at least 20 times a second (the quaternion alone stays the same while the chip is perfectly still, so the check counts changes of the whole sample); \|q\| within 0.98..1.02; gyro noise < 1 dps and bias < 5 dps while still; gyro calibration 3/3 (keep the robot still for a few seconds); read failures ≤ 1%. Pitch / roll are converted with `[bus] imu_axes`. `gravity_sensor` in the result shows which sensor axis carries gravity; use it to find `imu_axes` (robot upright, then on its back) |
+| Mic | play silence and record 4 seconds at the same time (play first, then record, or the whole recording is stuck at full scale); clap or talk during the recording | neither channel is all 0; DC offset < 3000; clipping < 2%; peak ≥ 4 × noise floor |
+| Speaker | play 1 kHz (−12 dBFS) and record at the same time, compare the 1 kHz energy in the loud and quiet windows; then ask whether a person heard it | ≥ 15 dB higher, and a person heard it |
+| ToF | read tofd's `tof.stream`; when tofd is not running, start one for the test (`--bus` taken from tofd-dev.service, default /dev/i2c-2) and stop only that one afterwards | ≥ 10 Hz; ≥ 32/64 valid zones |
+| Camera | find the node named `vin_video*`, grab 45 frames with `duckcam --half` (ISP auto exposure) | ≥ 10 fps; brightness not all black or all white; the image has texture. A thumbnail is attached |
 
-- 摄像头测试从不调用 `v4l2-ctl --list-ctrls`，那条命令会把板子卡死。vin 驱动没加载时，要先运行 `sudo modprobe -a vin_io imx219 vin_v4l2`。
-- visiond 在跑时摄像头被它占着，摄像头测试会报占用。
+- The camera test never calls `v4l2-ctl --list-ctrls`: that command hangs the board. When the vin driver is not loaded, run `sudo modprobe -a vin_io imx219 vin_v4l2` first.
+- While visiond runs it holds the camera, and the camera test reports it as in use.

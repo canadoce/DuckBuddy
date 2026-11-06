@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""DuckBuddy 装机/维修工具：电脑上起一个网页，四件事——舵机设置、零位标定、IMU 固件烧录、整机测试。
+"""DuckBuddy build / repair tool: a web page served from the computer for four jobs: servo setup, zero calibration, IMU firmware flashing and the whole-robot test.
 
-    python tools/bringup/app.py --host orangepi@duck-1a2b.local             # 浏览器开 http://localhost:8780
-    python tools/bringup/app.py --host orangepi@192.168.1.50 --com COM11    # 用 IP，外加飞特 USB 调试板
+    python tools/bringup/app.py --host orangepi@duck-1a2b.local             # open http://localhost:8780 in the browser
+    python tools/bringup/app.py --host orangepi@192.168.1.50 --com COM11    # by IP, plus the Feetech USB board
+    python tools/bringup/app.py --bench pi@192.168.1.166                    # Raspberry Pi test bench in place of the USB board
 
-结构：网页 ⇄ 本程序（电脑）⇄ 两个"代理"（agent.py，一行一个 JSON）：
-- 机器人代理：每次连接经 ssh 把 agent.py 从 stdin 送到机器人上跑（机器人上不用装东西），
-  管 /dev/ttyS7 舵机总线（500k）和麦克风/喇叭/ToF/摄像头/IMU 的测试；
-- USB 代理：在电脑上跑 agent.py --usb，接飞特 USB 调试板（CH343）。出厂舵机是 1M，
-  OPi 的 UART7 设 1M 实际 750k，新舵机改 ID / 波特率只能走这里。
-零位标定直接复用 tools/joint_align（它的 Calib / Renderer / 页面），在 端口+1 上起，网页里嵌进来。
-IMU 固件在电脑上 cargo build + probe-rs 下载（ST-Link 接 PDB J2），烧完经机器人总线读 ID 200 核对。
+Layout: web page ⇄ this program (computer) ⇄ two "agents" (agent.py, one JSON per line):
+- Robot agent: on each connection, agent.py is sent over ssh on stdin and runs on the robot (nothing to install there).
+  It owns the /dev/ttyS7 servo bus (500k) and runs the mic / speaker / ToF / camera / IMU tests.
+- USB agent: agent.py --usb runs on the computer, with the Feetech USB board (CH343). Factory servos run at 1M;
+  the OPi's UART7 set to 1M really runs at 750k, so a new servo's ID / baud rate can only be changed here.
+  Or a Raspberry Pi test bench (--bench): a Pi with a servo HAT (Robot HAT E1) whose UART does 1M
+  exactly. agent.py --usb runs on it over ssh, the same way as on the robot, and takes the USB board's place.
+Zero calibration reuses tools/joint_align as is (its Calib / Renderer / page): it starts on port+1 and is embedded in the page.
+IMU firmware: cargo build + probe-rs download on the computer (ST-Link on PDB J2); after flashing, ID 200 is read over the robot bus to check it.
 """
 import argparse
 import importlib.util
@@ -33,12 +36,12 @@ ELF = os.path.join(FIRMWARE, "target", "thumbv6m-none-eabi", "release", "imu-fee
 CHIP = "STM32G031F8Px"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-# 机器人端的引导：第一行是 agent.py 的字节数，接着是源码，之后 stdin 就是请求流
+# Boot code on the robot: the first line is the size of agent.py in bytes, then the source, then stdin is the request stream
 BOOT = "import sys;b=sys.stdin.buffer;n=int(b.readline());exec(b.read(n))"
 
 
 class Agent:
-    """一个 agent.py 进程：请求串行发送（一把锁），应答按 id 取回。断了下次调用时重连。"""
+    """One agent.py process: requests go out one at a time (one lock), replies are matched by id. Reconnects on the next call if it dropped."""
 
     def __init__(self, name, argv, send_source):
         self.name, self.argv, self.send_source = name, argv, send_source
@@ -60,7 +63,7 @@ class Agent:
                 self.p.stdin.write(b"%d\n" % len(src) + src)
                 self.p.stdin.flush()
             except OSError:
-                pass  # ssh 已经退出（连不上）：下面等不到 hello，报 ssh 的错误输出
+                pass  # ssh already exited (cannot connect): no hello comes below, so ssh's error output is reported
         threading.Thread(target=self._read_out, args=(self.p, self.replies), daemon=True).start()
         threading.Thread(target=self._read_err, args=(self.p,), daemon=True).start()
         try:
@@ -68,10 +71,10 @@ class Agent:
         except queue.Empty:
             first = None
         if not first or not first.get("hello"):
-            time.sleep(0.2)  # 让 stderr 读线程收完 ssh 的报错
+            time.sleep(0.2)  # let the stderr reader thread collect ssh's error
             self.close()
             tail = " / ".join(self.err_tail[-3:])
-            raise RuntimeError(f"{self.name} 代理没起来" + (f"：{tail}" if tail else ""))
+            raise RuntimeError(f"{self.name} agent did not start" + (f": {tail}" if tail else ""))
         self.hello = first
 
     @staticmethod
@@ -101,21 +104,21 @@ class Agent:
                 self.p.stdin.flush()
             except OSError:
                 self.close()
-                raise RuntimeError(f"{self.name} 代理断开了，再点一次会重连")
+                raise RuntimeError(f"{self.name} agent disconnected; click again to reconnect")
             deadline = time.time() + timeout
             while True:
                 try:
                     m = self.replies.get(timeout=max(0.1, deadline - time.time()))
                 except queue.Empty:
-                    self.close()  # 应答对不上了，重来
-                    raise RuntimeError(f"{op} 超时（{timeout} s）")
+                    self.close()  # replies no longer match the requests: start over
+                    raise RuntimeError(f"{op} timed out ({timeout} s)")
                 if m is None:
                     self.close()
                     tail = " / ".join(self.err_tail[-3:])
-                    raise RuntimeError(f"{self.name} 代理断开了" + (f"：{tail}" if tail else ""))
+                    raise RuntimeError(f"{self.name} agent disconnected" + (f": {tail}" if tail else ""))
                 if m.get("id") == rid:
                     if not m.get("ok"):
-                        raise RuntimeError(m.get("error") or "失败")
+                        raise RuntimeError(m.get("error") or "failed")
                     return m["result"]
 
     def close(self):
@@ -128,7 +131,7 @@ class Agent:
 
 
 class Job:
-    """电脑上跑的命令（cargo / probe-rs），输出逐行收集给网页轮询。"""
+    """A command run on the computer (cargo / probe-rs). Its output is collected line by line for the page to poll."""
     jobs = {}
     seq = 0
 
@@ -142,7 +145,7 @@ class Job:
         for cmd in cmds:
             exe = shutil.which(cmd[0])
             if not exe:
-                self.lines.append(f"找不到 {cmd[0]}（PATH 里没有）")
+                self.lines.append(f"cannot find {cmd[0]} (not in PATH)")
                 self.rc = -1
                 break
             self.lines.append("$ " + " ".join(cmd))
@@ -159,7 +162,7 @@ class Job:
                 self.rc = -1
             if self.rc != 0:
                 break
-        self.lines.append("完成" if self.rc == 0 else f"失败（退出码 {self.rc}）")
+        self.lines.append("done" if self.rc == 0 else f"failed (exit code {self.rc})")
         self.done = True
 
     def snapshot(self, since=0):
@@ -187,23 +190,25 @@ def firmware_info():
 
 
 class Calibration:
-    """零位标定：在 端口+1 上起 tools/joint_align 的服务（同一份代码、同一个页面）。"""
+    """Zero calibration: starts the tools/joint_align server on port+1 (same code, same page)."""
 
     def __init__(self, a):
         self.a = a
-        self.url = None  # 起来后是端口号
+        self.url = None  # the port number once started
         self.lock = threading.Lock()
 
     def start(self):
         with self.lock:
             if self.url:
                 return self.url
+            if not self.a.host:
+                raise RuntimeError("zero calibration needs the robot: start app.py with --host")
             spec = importlib.util.spec_from_file_location("joint_align_server",
                                                           os.path.join(ROOT, "tools", "joint_align", "server.py"))
             ja = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(ja)
             live = ja.Live()
-            # 第一次连上时 joint_align 会发 robot.relax（网页上已确认机器人躺好/托好）
+            # on the first connection joint_align sends robot.relax (the page has already confirmed the robot is lying down / held)
             threading.Thread(target=ja.reader, args=(live, self.a.host, False), daemon=True).start()
             calib = ja.Calib(self.a.host, self.a.config, self.a.restart_cmd, self.a.init_cmd)
             threading.Thread(target=calib.load, daemon=True).start()
@@ -218,7 +223,7 @@ def make_handler(a, robot, usb_box, calibration):
 
     def usb():
         if usb_box["agent"] is None:
-            raise RuntimeError("还没选 USB 调试板的串口")
+            raise RuntimeError("no serial port picked for the USB board yet")
         return usb_box["agent"]
 
     class H(BaseHTTPRequestHandler):
@@ -249,13 +254,15 @@ def make_handler(a, robot, usb_box, calibration):
                              for p in list_ports.comports()]
                 except ImportError:
                     ports = []
+                if a.bench:
+                    ports.insert(0, dict(device=bench_device(a), desc="Raspberry Pi test bench", vid=None, pid=None))
                 return self._send(dict(ports=ports, current=usb_box["port"]))
             if u.path == "/api/flash/info":
                 return self._send(firmware_info())
             if u.path == "/api/job":
                 job = Job.jobs.get(int(qs.get("id", ["0"])[0]))
                 if not job:
-                    return self._send(dict(error="没有这个任务"), code=404)
+                    return self._send(dict(error="no such job"), code=404)
                 return self._send(job.snapshot(int(qs.get("since", ["0"])[0])))
             self._send(b"not found", "text/plain", 404)
 
@@ -282,7 +289,7 @@ def make_handler(a, robot, usb_box, calibration):
                     if usb_box["agent"]:
                         usb_box["agent"].close()
                     usb_box["port"] = port or None
-                    usb_box["agent"] = usb_agent(port) if port else None
+                    usb_box["agent"] = usb_agent(port, a) if port else None
                     return self._send(dict(ok=True, port=usb_box["port"]))
                 if u.path == "/api/calib/start":
                     return self._send(dict(ok=True, port=calibration.start()))
@@ -290,16 +297,16 @@ def make_handler(a, robot, usb_box, calibration):
                     what = body.get("what")
                     probe = ["--chip", CHIP, "--non-interactive"]
                     if what == "build":
-                        job = Job("构建固件", [["cargo", "build", "--release"]], FIRMWARE)
+                        job = Job("Build firmware", [["cargo", "build", "--release"]], FIRMWARE)
                     elif what == "probe":
-                        job = Job("找 ST-Link", [["probe-rs", "list"]], FIRMWARE)
+                        job = Job("Find ST-Link", [["probe-rs", "list"]], FIRMWARE)
                     elif what == "flash":
                         if not os.path.exists(ELF):
-                            raise RuntimeError("还没构建（target/…/release/imu-feetech 不存在）")
-                        job = Job("烧录", [["probe-rs", "download", *probe, "--disable-progressbars", "--verify", ELF],
+                            raise RuntimeError("not built yet (target/…/release/imu-feetech does not exist)")
+                        job = Job("Flash", [["probe-rs", "download", *probe, "--disable-progressbars", "--verify", ELF],
                                          ["probe-rs", "reset", *probe]], FIRMWARE)
                     else:
-                        raise RuntimeError(f"不认识 {what}")
+                        raise RuntimeError(f"unknown action {what}")
                     return self._send(dict(ok=True, job=job.id))
             except Exception as e:  # noqa: BLE001
                 return self._send(dict(ok=False, error=str(e)))
@@ -308,33 +315,56 @@ def make_handler(a, robot, usb_box, calibration):
     return H
 
 
-def usb_agent(port):
-    return Agent("USB 调试板", [sys.executable, "-u", AGENT, "--usb", "--port", port, "--baud", "1000000"],
+def bench_device(a):
+    """The bench's entry in the port list: picking it uses the Pi's UART instead of a local port."""
+    return f"ssh:{a.bench}:{a.bench_port}"
+
+
+def usb_agent(port, a):
+    if a.bench and port == bench_device(a):
+        return Agent("Test bench", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5",
+                                    a.bench, f"python3 -u -c '{BOOT}' --usb --port {a.bench_port} --baud 1000000"],
+                     send_source=True)
+    return Agent("USB board", [sys.executable, "-u", AGENT, "--usb", "--port", port, "--baud", "1000000"],
                  send_source=False)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", required=True, help="机器人的 ssh 地址（免密），如 orangepi@duck-1a2b.local")
-    ap.add_argument("--port", type=int, default=8780, help="网页端口；零位标定用 端口+1")
-    ap.add_argument("--listen", default="127.0.0.1", help="0.0.0.0 = 局域网里别的设备也能打开")
-    ap.add_argument("--com", default=None, help="飞特 USB 调试板串口（如 COM11），也可在网页里选")
-    ap.add_argument("--config", default="~/robot/active.toml", help="机器人上 robotd 的配置")
-    ap.add_argument("--unit", default="robotd-dev", help="robotd 的 systemd --user 单元")
+    ap.add_argument("--host", default=None,
+                    help="ssh address of the robot (no password), e.g. orangepi@duck-1a2b.local. Can be left out with --bench")
+    ap.add_argument("--port", type=int, default=8780, help="web page port; zero calibration uses port+1")
+    ap.add_argument("--listen", default="127.0.0.1", help="0.0.0.0 = other devices on the LAN can open it too")
+    ap.add_argument("--com", default=None, help="serial port of the Feetech USB board (e.g. COM11); can also be picked in the page")
+    ap.add_argument("--bench", default=None,
+                    help="ssh address (no password) of a Raspberry Pi test bench with a servo HAT, e.g. pi@192.168.1.166; "
+                         "used in place of the USB board")
+    ap.add_argument("--bench-port", default="/dev/serial0", help="the bench's servo UART (default /dev/serial0)")
+    ap.add_argument("--config", default="~/robot/active.toml", help="robotd's config file on the robot")
+    ap.add_argument("--unit", default="robotd-dev", help="robotd's systemd --user unit")
     ap.add_argument("--restart-cmd", default="systemctl --user restart robotd-dev",
-                    help="零位写入后在机器人上执行，让 robotd 重读配置")
+                    help="run on the robot after the zero offsets are written, so robotd reloads its config")
     ap.add_argument("--init-cmd", default="cd ~/robot && ./robotctl robot init --robot-socket /tmp/robotd.sock",
-                    help="\"写入并回 home\" 重启后执行")
+                    help="run by \"Write and go home\" after the restart")
     a = ap.parse_args()
+    if not a.host and not a.bench:
+        ap.error("give --host (the robot), --bench (a test bench), or both")
 
-    robot = Agent("机器人", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5",
-                          a.host, f"python3 -u -c '{BOOT}' --config {a.config}"], send_source=True)
+    if a.host:
+        robot = Agent("Robot", ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5",
+                              a.host, f"python3 -u -c '{BOOT}' --config {a.config}"], send_source=True)
+    else:
+        robot = Agent("Robot", [sys.executable, "-c", "import sys; sys.exit('no --host given: the robot is not connected')"],
+                      send_source=False)
     usb_box = {"port": a.com, "agent": None}
     handler = make_handler(a, robot, usb_box, Calibration(a))
-    if a.com:
-        usb_box["agent"] = usb_agent(a.com)
+    if a.bench and not a.com:
+        usb_box["port"] = bench_device(a)
+    if usb_box["port"]:
+        usb_box["agent"] = usb_agent(usb_box["port"], a)
     srv = ThreadingHTTPServer((a.listen, a.port), handler)
-    print(f"http://localhost:{a.port}  （机器人 {a.host}）", flush=True)
+    print(f"http://localhost:{a.port}  (robot {a.host or '-'}" + (f", test bench {a.bench}" if a.bench else "") + ")",
+          flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-"""HL-2915 摆杆台录制 —— 产出 BAM（Better Actuator Models）可直接拟合的日志。
+"""HL-2915 pendulum rig recording -- writes logs that BAM (Better Actuator Models) can fit directly.
 
-训练仓库 microduck_rl 的执行器模型用 BAM 辨识；BAM 自带的飞特录制脚本是给 STS3215 的
-（另一张内存表、1M、Linux 串口），这里按同样的轨迹和日志格式重写给 HLS 内存表 + 调试板。
+The actuator model in the training repo microduck_rl is identified with BAM. BAM's own Feetech recording script is for the STS3215
+(a different memory table, 1M, Linux serial port). This is a rewrite with the same trajectories and log format for the HLS memory table + debug board.
 
-台架：舵机固定在桌边，输出轴水平；舵盘上装一根刚性摆杆，末端挂配重。
-摆杆**自然下垂为 0 位**，要能向两侧自由摆过 ±110°（不碰桌子、不缠线）。
-需要量：摆杆自身质量 --arm-mass、末端配重 --mass（kg），轴心到配重中心的距离 --length（m）。
+Rig: the servo is fixed at the edge of a table with the output shaft level; a stiff pendulum arm is fitted on the horn, with a weight at its end.
+The arm **hanging down freely is position 0**. It must swing freely past ±110° to both sides (not hitting the table, not catching cables).
+Measure: the arm's own mass --arm-mass, the end weight --mass (kg), and the distance from the shaft to the center of the weight --length (m).
 
-用法（调试板 COM11，只接这一只舵机，12V 供电；先关掉 FD 上位机）：
-    python tools/servo/bam_record.py --check                       # 只读：看 0 位、电压、温度
+Usage (debug board COM11, only this one servo connected, 12V power; close the FD desktop app first):
+    python tools/servo/bam_record.py --check                       # read only: show position 0, voltage, temperature
     python tools/servo/bam_record.py --mass 0.1 --arm-mass 0.02 --length 0.1 --logdir training/data/bam-hl2915/m100
-    python tools/servo/bam_record.py ... --kps 16 --trajectories sin_sin   # 只录一组
+    python tools/servo/bam_record.py ... --kps 16 --trajectories sin_sin   # record only one set
 
-每组（Kp × 轨迹）6 秒，存一个 JSON。录制中 Ctrl-C 会立即关扭矩。
-寄存器与机器人一致：目标电流 44（默认 1300 mA）、运行速度 46 = 250、加速度 41 = 0、
-实时 Kp 50 / Kd 51（Kd 默认 8，与 deploy/robots/opi-hl2915-rev-a.toml 相同）。
+Each set (Kp x trajectory) is 6 seconds and is saved as one JSON. Ctrl-C during recording turns torque off at once.
+Registers match the robot: goal current 44 (default 1300 mA), running speed 46 = 250, acceleration 41 = 0,
+live Kp 50 / Kd 51 (Kd default 8, same as deploy/robots/opi-hl2915-rev-a.toml).
 """
 import argparse
 import datetime
@@ -32,13 +32,13 @@ from fts_bus import (ACCEL, GOAL_CURR, GOAL_SPEED, MAX_ANGLE, MIN_ANGLE, MODE, P
 
 KP, KD = 50, 51
 COUNTS_PER_RAD = 4096 / (2 * math.pi)
-RAD_S_PER_SPEED = 0.732 * 2 * math.pi / 60       # 58 号：0.732 rpm/计数
+RAD_S_PER_SPEED = 0.732 * 2 * math.pi / 60       # address 58: 0.732 rpm/count
 MA_PER_COUNT = 6.5
 RUNNING_SPEED = 250
 MAX_TEMP = 65
 
 
-# ---- BAM 的轨迹（bam/trajectory.py 原样移植，6 秒，0 = 下垂）---------------------
+# ---- BAM trajectories (ported as is from bam/trajectory.py, 6 s, 0 = hanging down) ----
 def cubic(keyframes, t):
     if t <= keyframes[0][0]:
         return keyframes[0][1]
@@ -53,23 +53,23 @@ def cubic(keyframes, t):
 
 
 TRAJECTORIES = {
-    # 2 s 抬到 -90° 后断扭矩自由下落：反驱 / 低速摩擦
+    # lift to -90° in 2 s, then cut torque and let it fall freely: back-drive / low speed friction
     "lift_and_drop": lambda t: (cubic([[0, 0, 0], [2, -math.pi/2, 0]], t), t < 2.0),
-    # sin(t²) 越摆越快：主力轨迹，扫过整个速度范围（末段会碰到舵机转速上限）
+    # sin(t²) swings faster and faster: the main trajectory, covers the whole speed range (the last part hits the servo's speed limit)
     "sin_time_square": lambda t: (math.sin(t*t), True),
-    # 慢速 0 → 90° → 72°：静摩擦与负载
+    # slow 0 -> 90° -> 72°: static friction and load
     "up_and_down": lambda t: (cubic([[0, 0, 0], [3, math.pi/2, 0], [6, 0.8*math.pi/2, 0]], t), True),
-    # 多频叠加，6 s 内最大约 ±101°
+    # several frequencies added, at most about ±101° within 6 s
     "sin_sin": lambda t: (math.sin(t)*math.pi/2 + math.sin(5*t)*0.5*math.sin(2*t), True),
-    # 全程无扭矩
+    # no torque the whole time
     "nothing": lambda t: (0.0, False),
 }
 DURATION = 6.0
-MAX_EXCURSION = 1.8        # rad，sin_sin 6 s 内最大 1.76
+MAX_EXCURSION = 1.8        # rad, sin_sin peaks at 1.76 within 6 s
 
 
 class Servo:
-    """单只舵机的快速读写：读一次 56..70 共 15 字节；目标位置走 SYNC_WRITE（无应答）。"""
+    """Fast reads and writes for one servo: one read covers 56..70, 15 bytes; goal position uses SYNC_WRITE (no reply)."""
 
     def __init__(self, port, baud, sid):
         self.s = serial.Serial(port, baud, timeout=0.02, write_timeout=0.2)
@@ -120,7 +120,7 @@ class Servo:
         for _ in range(3):
             if self.w8(TORQUE, 1 if on else 0):
                 return
-        raise IOError("扭矩开关写入失败")
+        raise IOError("writing the torque switch failed")
 
 
 def state_or_die(servo):
@@ -128,11 +128,11 @@ def state_or_die(servo):
         st = servo.state()
         if st is not None:
             return st
-    raise IOError(f"ID {servo.id} 无应答")
+    raise IOError(f"ID {servo.id} does not reply")
 
 
 def find_zero(servo):
-    """扭矩关、摆杆自然下垂时的位置（1 s 平均）。晃动太大就拒绝。"""
+    """Position with torque off and the arm hanging down freely (1 s average). Refuses if it swings too much."""
     servo.torque(False)
     samples = []
     t0 = time.time()
@@ -148,7 +148,7 @@ def record_one(servo, zero, kp, name, meta, logdir):
     to_counts = lambda q: zero + q * COUNTS_PER_RAD
     servo.w8(KP, kp)
 
-    # 1 s 预备：和 BAM 一样先停在轨迹起点
+    # 1 s to get ready: like BAM, first hold at the start of the trajectory
     q0, en = traj(0.0)
     servo.goal(to_counts(q0))
     servo.torque(en)
@@ -175,12 +175,12 @@ def record_one(servo, zero, kp, name, meta, logdir):
         if st is None:
             continue
         if st["temp"] >= MAX_TEMP:
-            raise RuntimeError(f"温度 {st['temp']}°C，停止")
+            raise RuntimeError(f"temperature {st['temp']}°C, stopping")
         entries.append(dict(
             timestamp=(t0 + t1) / 2,
             position=(st["pos"] - zero) / COUNTS_PER_RAD,
             speed=st["speed"] * RAD_S_PER_SPEED,
-            load=st["current"] / 1000.0,          # BAM 不用；这里放电流（A）备查
+            load=st["current"] / 1000.0,          # BAM does not use it; current (A) is stored here for reference
             input_volts=st["volts"],
             temp=float(st["temp"]),
             goal_position=q,
@@ -188,7 +188,7 @@ def record_one(servo, zero, kp, name, meta, logdir):
             current=st["current"] / 1000.0,
         ))
 
-    # 慢慢回到 0（1 rad/s），再断扭矩
+    # slowly back to 0 (1 rad/s), then cut torque
     st = state_or_die(servo)
     q = (st["pos"] - zero) / COUNTS_PER_RAD
     servo.goal(to_counts(q))
@@ -208,7 +208,7 @@ def record_one(servo, zero, kp, name, meta, logdir):
     path = os.path.join(logdir, f"{stamp}_kp{kp}_{name}.json")
     json.dump(log, open(path, "w"))
     peak = max((abs(e["current"]) for e in entries), default=0)
-    print(f"  {len(entries)} 点 / {rate:.0f} Hz，{vin:.1f} V，峰值电流 {peak:.2f} A -> {path}")
+    print(f"  {len(entries)} points / {rate:.0f} Hz, {vin:.1f} V, peak current {peak:.2f} A -> {path}")
 
 
 def main():
@@ -216,10 +216,10 @@ def main():
     ap.add_argument("--port", default="COM11")
     ap.add_argument("--baud", type=int, default=500000)
     ap.add_argument("--id", type=int, default=1)
-    ap.add_argument("--check", action="store_true", help="只读，不上扭矩")
-    ap.add_argument("--mass", type=float, help="末端配重 kg")
-    ap.add_argument("--arm-mass", type=float, help="摆杆自身 kg（含舵盘到配重之间的一切）")
-    ap.add_argument("--length", type=float, help="轴心到配重中心 m")
+    ap.add_argument("--check", action="store_true", help="read only, no torque")
+    ap.add_argument("--mass", type=float, help="end weight kg")
+    ap.add_argument("--arm-mass", type=float, help="arm's own mass kg (everything between the horn and the weight)")
+    ap.add_argument("--length", type=float, help="shaft to center of weight m")
     ap.add_argument("--logdir")
     ap.add_argument("--kps", default="8,16,24,32")
     ap.add_argument("--kd", type=int, default=8)
@@ -230,39 +230,39 @@ def main():
     servo = Servo(a.port, a.baud, a.id)
     st = servo.state()
     if st is None:
-        sys.exit(f"{a.port} @ {a.baud} 上 ID {a.id} 无应答（波特率/ID 不对？用 set_baud.py --scan 看看）")
+        sys.exit(f"ID {a.id} does not reply on {a.port} @ {a.baud} (wrong baud rate/ID? check with set_baud.py --scan)")
 
     mode = servo.read(MODE, 1)
     lim = servo.read(MIN_ANGLE, 4)
-    print(f"ID {a.id}: 位置 {st['pos']}，{st['volts']:.1f} V，{st['temp']}°C，状态 0x{st['status']:02x}，"
-          f"模式 {mode[0] if mode else '?'}，限位 {lim[0] | lim[1] << 8 if lim else '?'}"
+    print(f"ID {a.id}: position {st['pos']}, {st['volts']:.1f} V, {st['temp']}°C, status 0x{st['status']:02x}, "
+          f"mode {mode[0] if mode else '?'}, limits {lim[0] | lim[1] << 8 if lim else '?'}"
           f"..{lim[2] | lim[3] << 8 if lim else '?'}")
 
     zero, spread = find_zero(servo)
     margin = MAX_EXCURSION * COUNTS_PER_RAD
-    print(f"下垂 0 位 {zero:.0f}（1 s 内抖动 {spread} 计数）；需要 {zero - margin:.0f}..{zero + margin:.0f} 在 0..4095 内")
+    print(f"hanging position 0 = {zero:.0f} (jitter {spread} counts within 1 s); {zero - margin:.0f}..{zero + margin:.0f} must be inside 0..4095")
     ok_range = zero - margin >= 0 and zero + margin <= 4095
     if not ok_range:
-        print("!! 0 位离中点太远，大幅轨迹会越过 0/4095。把舵盘相对舵机转一个角度重装，让下垂时读数接近 2048。")
+        print("!! Position 0 is too far from the midpoint, large trajectories will cross 0/4095. Refit the horn at a different angle on the servo so the hanging reading is near 2048.")
     if spread > 10:
-        print("!! 摆杆还在晃，等它停稳再测。")
+        print("!! The arm is still swinging, wait until it is still and measure again.")
     if a.check:
         return
     if not ok_range or spread > 10:
         sys.exit(1)
     if mode is None or mode[0] != 0:
-        sys.exit("舵机不在位置模式（33 ≠ 0）")
+        sys.exit("The servo is not in position mode (33 != 0)")
     if None in (a.mass, a.arm_mass, a.length, a.logdir):
-        sys.exit("录制需要 --mass --arm-mass --length --logdir")
+        sys.exit("Recording needs --mass --arm-mass --length --logdir")
 
     os.makedirs(a.logdir, exist_ok=True)
     kps = [int(k) for k in a.kps.split(",")]
     names = a.trajectories.split(",")
     for n in names:
         if n not in TRAJECTORIES:
-            sys.exit(f"未知轨迹 {n}；可选 {', '.join(TRAJECTORIES)}")
+            sys.exit(f"Unknown trajectory {n}; choices: {', '.join(TRAJECTORIES)}")
 
-    # 与机器人相同的 RAM 设置（掉电即失，每次都写）
+    # Same RAM settings as the robot (lost at power off, written every time)
     assert servo.w16(GOAL_CURR, int(round(a.current_ma / MA_PER_COUNT)))
     assert servo.w16(GOAL_SPEED, RUNNING_SPEED)
     assert servo.w8(ACCEL, 0)
@@ -273,18 +273,18 @@ def main():
     try:
         for kp in kps:
             for n in names:
-                print(f"Kp {kp}，{n}")
+                print(f"Kp {kp}, {n}")
                 record_one(servo, zero, kp, n, meta, a.logdir)
                 time.sleep(3.0 if n == "lift_and_drop" else 1.0)
-                # 每组之间重新确认 0 位没漂（舵盘打滑会让后面的数据全错）
+                # Between sets check again that position 0 has not drifted (a slipping horn would spoil all later data)
                 z, sp = find_zero(servo)
                 if sp <= 10 and abs(z - zero) > 30:
-                    raise RuntimeError(f"0 位从 {zero:.0f} 变成 {z:.0f}，舵盘或摆杆松了？")
+                    raise RuntimeError(f"position 0 moved from {zero:.0f} to {z:.0f}, is the horn or arm loose?")
     except KeyboardInterrupt:
-        print("\n中断")
+        print("\nInterrupted")
     finally:
         servo.torque(False)
-        print("扭矩已关")
+        print("Torque off")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# robotd IPC 小工具：python3 rpc.py enable|disable|relax|init|health|watch SECONDS|record SECONDS PATH|move VX SECONDS [VYAW]
+# robotd IPC helper: python3 rpc.py enable|disable|relax|init|health|watch SECONDS|record SECONDS PATH|move VX SECONDS [VYAW]
 import socket, json, sys, time
 SOCK = "/tmp/robotd.sock"
 def call(method, params=None):

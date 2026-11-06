@@ -1,7 +1,9 @@
 # Per-servo bus ping (robotd must be stopped): N single reads of present position from each ID, no
 # retries; plus voltage (62), temperature (63) and status (65) per servo.
+# Usage: ping_all.py [N] [PORT]   PORT defaults to /dev/ttyS7 (HAT R3E); /dev/ttyS0 on the Robot HAT E1.
 import os, sys, termios, time, select
-fd = os.open("/dev/ttyS7", os.O_RDWR | os.O_NOCTTY)
+PORT = sys.argv[2] if len(sys.argv) > 2 else "/dev/ttyS7"
+fd = os.open(PORT, os.O_RDWR | os.O_NOCTTY)
 a = termios.tcgetattr(fd)
 a[0] = 0; a[1] = 0; a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL; a[3] = 0
 a[4] = a[5] = termios.B500000; a[6][termios.VMIN] = 0; a[6][termios.VTIME] = 0
