@@ -17,6 +17,34 @@ pub const READ: u8 = 0x02;
 pub const WRITE: u8 = 0x03;
 pub const SYNC_READ: u8 = 0x82;
 
+/// The bus speeds this board runs at, picked at start-up by the PC15 solder jumper (see
+/// `main.rs`). The value at address 6 follows Feetech's baud register: 0 = 1 Mbit/s,
+/// 1 = 500 kbit/s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Baud {
+    /// 500 kbit/s: the DuckBuddy bus (the A733's UART7 cannot do a true 1 Mbit/s).
+    K500,
+    /// 1 Mbit/s: an STS3215 bus at its factory speed (Frankenduck).
+    M1,
+}
+
+impl Baud {
+    pub const fn bits_per_second(self) -> u32 {
+        match self {
+            Baud::K500 => 500_000,
+            Baud::M1 => 1_000_000,
+        }
+    }
+
+    /// The code a Feetech servo keeps in register 6 for this speed.
+    pub const fn register(self) -> u8 {
+        match self {
+            Baud::K500 => 1,
+            Baud::M1 => 0,
+        }
+    }
+}
+
 /// Where the host's tick reads, and how much: the servos' present-state block, 56..70.
 pub const BLOCK_ADDR: u8 = 56;
 pub const BLOCK_LEN: usize = 15;
@@ -24,6 +52,16 @@ pub const BLOCK_LEN: usize = 15;
 /// Where the bus task's own counters can be read: 8 bytes, see `main.rs` (`DIAG`).
 pub const DIAG_ADDR: u8 = 90;
 pub const DIAG_LEN: usize = 8;
+
+/// Where the power readings can be read (R3 boards): 6 bytes, all u16 LE.
+/// 0..2 battery voltage in mV, 2..4 battery current in mA, 4..6 the MCU's 3.3 V supply in mV.
+/// All zero until the first reading.
+pub const POWER_ADDR: u8 = 100;
+pub const POWER_LEN: usize = 6;
+
+/// Byte 14 of the block at 56: the battery voltage in units of 0.1 V, so the host sees it in
+/// every `SYNC_READ` without an extra read.
+pub const BLOCK_BATTERY: usize = 14;
 
 /// Largest parameter list accepted. A `SYNC_READ` naming 16 devices carries 18.
 pub const MAX_PARAMS: usize = 40;
@@ -233,24 +271,49 @@ impl Slave {
     }
 }
 
+/// Everything the register map is built from at the moment of a read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Registers {
+    pub block: [u8; BLOCK_LEN],
+    pub diag: [u8; DIAG_LEN],
+    pub power: [u8; POWER_LEN],
+    pub baud: Baud,
+}
+
+impl Registers {
+    pub const fn new(baud: Baud) -> Self {
+        Self {
+            block: [0; BLOCK_LEN],
+            diag: [0; DIAG_LEN],
+            power: [0; POWER_LEN],
+            baud,
+        }
+    }
+}
+
 /// The register map a host can read: identity at the bottom, the orientation block at 56.
-pub fn read_map(block: &[u8; BLOCK_LEN], diag: &[u8; DIAG_LEN], addr: u8, out: &mut [u8]) {
+pub fn read_map(r: &Registers, addr: u8, out: &mut [u8]) {
+    let battery_mv = u16::from_le_bytes([r.power[0], r.power[1]]);
     for (k, slot) in out.iter_mut().enumerate() {
         let a = addr as usize + k;
         *slot = match a {
             0 => 1, // firmware major
-            1 => 0, // firmware minor
+            1 => 2, // firmware minor (1: the baud jumper, 2: battery voltage and current)
             3 => 0xD6, // "model": 0x16D6, chosen not to collide with any Feetech servo
             4 => 0x16,
             5 => MY_ID,
-            6 => 1, // baud register: 500 kbit/s
+            6 => r.baud.register(),
             7 => 0, // return delay
             55 => 1, // "locked"
+            _ if a == BLOCK_ADDR as usize + BLOCK_BATTERY => battery_decivolts(battery_mv),
             _ if (BLOCK_ADDR as usize..BLOCK_ADDR as usize + BLOCK_LEN).contains(&a) => {
-                block[a - BLOCK_ADDR as usize]
+                r.block[a - BLOCK_ADDR as usize]
             }
             _ if (DIAG_ADDR as usize..DIAG_ADDR as usize + DIAG_LEN).contains(&a) => {
-                diag[a - DIAG_ADDR as usize]
+                r.diag[a - DIAG_ADDR as usize]
+            }
+            _ if (POWER_ADDR as usize..POWER_ADDR as usize + POWER_LEN).contains(&a) => {
+                r.power[a - POWER_ADDR as usize]
             }
             _ => 0,
         };
@@ -272,22 +335,65 @@ pub fn status_frame(data: &[u8], out: &mut [u8; MAX_FRAME]) -> usize {
 }
 
 /// Answer an action: fill `out` with the reply frame, or return 0 for silence.
-pub fn reply(
-    action: Action,
-    block: &[u8; BLOCK_LEN],
-    diag: &[u8; DIAG_LEN],
-    out: &mut [u8; MAX_FRAME],
-) -> usize {
+pub fn reply(action: Action, r: &Registers, out: &mut [u8; MAX_FRAME]) -> usize {
     match action {
         Action::Nothing => 0,
         Action::Ack => status_frame(&[], out),
         Action::Read { addr, len } => {
             let len = (len as usize).min(MAX_READ);
             let mut data = [0u8; MAX_READ];
-            read_map(block, diag, addr, &mut data[..len]);
+            read_map(r, addr, &mut data[..len]);
             status_frame(&data[..len], out)
         }
     }
+}
+
+// ── power readings (R3) ──────────────────────────────────────────────────────
+
+/// Full scale of a 12-bit conversion.
+const ADC_FULL: u32 = 4095;
+/// The factory VREFINT calibration was taken at 3.0 V.
+const VREFINT_CAL_MV: u32 = 3000;
+/// Battery divider on PA0: 100 kΩ over 22 kΩ, so the pin sees 22/122 of the battery.
+const BATTERY_DIV_TOP: u32 = 100;
+const BATTERY_DIV_BOTTOM: u32 = 22;
+/// Current sense on PB7: 2 mΩ shunt × INA180A2 gain 50 = 0.1 V per A, so 1 mV = 10 mA.
+const CURRENT_MA_PER_MV: u32 = 10;
+
+/// The MCU supply in mV, from a reading of the internal reference and its factory value.
+pub fn supply_mv(vrefint_raw: u16, vrefint_cal: u16) -> u16 {
+    if vrefint_raw == 0 {
+        return 0;
+    }
+    (VREFINT_CAL_MV * vrefint_cal as u32 / vrefint_raw as u32).min(u16::MAX as u32) as u16
+}
+
+fn pin_mv(raw: u16, supply_mv: u16) -> u32 {
+    raw as u32 * supply_mv as u32 / ADC_FULL
+}
+
+/// The battery voltage in mV from a PA0 reading.
+pub fn battery_mv(raw: u16, supply_mv: u16) -> u16 {
+    (pin_mv(raw, supply_mv) * (BATTERY_DIV_TOP + BATTERY_DIV_BOTTOM) / BATTERY_DIV_BOTTOM).min(u16::MAX as u32) as u16
+}
+
+/// The battery current in mA from a PB7 reading.
+pub fn current_ma(raw: u16, supply_mv: u16) -> u16 {
+    (pin_mv(raw, supply_mv) * CURRENT_MA_PER_MV).min(u16::MAX as u32) as u16
+}
+
+/// mV to the 0.1 V units of block byte 14, rounded, capped at 25.5 V.
+pub fn battery_decivolts(mv: u16) -> u8 {
+    ((mv as u32 + 50) / 100).min(255) as u8
+}
+
+/// The 6 bytes served at `POWER_ADDR`.
+pub fn power_bytes(battery_mv: u16, current_ma: u16, supply_mv: u16) -> [u8; POWER_LEN] {
+    let mut out = [0u8; POWER_LEN];
+    out[0..2].copy_from_slice(&battery_mv.to_le_bytes());
+    out[2..4].copy_from_slice(&current_ma.to_le_bytes());
+    out[4..6].copy_from_slice(&supply_mv.to_le_bytes());
+    out
 }
 
 #[cfg(test)]
@@ -385,8 +491,8 @@ mod tests {
     #[test]
     fn our_own_echo_is_not_an_instruction() {
         let mut out = [0u8; MAX_FRAME];
-        let block = [7u8; BLOCK_LEN];
-        let n = reply(Action::Read { addr: 56, len: 15 }, &block, &[0; DIAG_LEN], &mut out);
+        let r = Registers { block: [7u8; BLOCK_LEN], ..Registers::new(Baud::K500) };
+        let n = reply(Action::Read { addr: 56, len: 15 }, &r, &mut out);
         let f = parse_all(&out[..n]).unwrap();
         assert_eq!(f.id, MY_ID);
         assert_eq!(Slave::new().on_frame(&f), Action::Nothing);
@@ -406,33 +512,80 @@ mod tests {
 
     #[test]
     fn the_map_serves_identity_and_the_block() {
-        let mut block = [0u8; BLOCK_LEN];
-        for (i, b) in block.iter_mut().enumerate() {
+        let mut r = Registers::new(Baud::K500);
+        for (i, b) in r.block.iter_mut().enumerate() {
             *b = 100 + i as u8;
         }
         let mut out = [0u8; 4];
-        read_map(&block, &[0; DIAG_LEN], 5, &mut out);
+        read_map(&r, 5, &mut out);
         assert_eq!(out, [MY_ID, 1, 0, 0]);
         let mut out = [0u8; BLOCK_LEN];
-        read_map(&block, &[0; DIAG_LEN], BLOCK_ADDR, &mut out);
-        let diag = [1, 2, 3, 4, 5, 6, 7, 8];
+        read_map(&r, BLOCK_ADDR, &mut out);
+        r.diag = [1, 2, 3, 4, 5, 6, 7, 8];
         let mut d = [0u8; DIAG_LEN];
-        read_map(&block, &diag, DIAG_ADDR, &mut d);
-        assert_eq!(d, diag);
-        assert_eq!(out, block);
+        read_map(&r, DIAG_ADDR, &mut d);
+        assert_eq!(d, r.diag);
+        // Byte 14 is the battery voltage, not the IMU loop's byte (no reading yet: 0).
+        assert_eq!(out[..BLOCK_BATTERY], r.block[..BLOCK_BATTERY]);
+        assert_eq!(out[BLOCK_BATTERY], 0);
     }
 
     /// The reply must be a frame the host's own parser accepts — checked by parsing it back.
     #[test]
     fn replies_round_trip_through_the_parser() {
-        let block = [0x5Au8; BLOCK_LEN];
+        let r = Registers {
+            block: [0x5Au8; BLOCK_LEN],
+            power: power_bytes(11_100, 0, 3300),
+            ..Registers::new(Baud::K500)
+        };
         let mut out = [0u8; MAX_FRAME];
-        let n = reply(Action::Read { addr: BLOCK_ADDR, len: 15 }, &block, &[0; DIAG_LEN], &mut out);
+        let n = reply(Action::Read { addr: BLOCK_ADDR, len: 15 }, &r, &mut out);
         assert_eq!(n, 21);
         let f = parse_all(&out[..n]).unwrap();
         assert_eq!((f.id, f.field), (MY_ID, 0));
-        assert_eq!(f.params(), &block);
-        assert_eq!(reply(Action::Ack, &block, &[0; DIAG_LEN], &mut out), 6);
+        assert_eq!(f.params()[..BLOCK_BATTERY], r.block[..BLOCK_BATTERY]);
+        assert_eq!(f.params()[BLOCK_BATTERY], 111);
+        assert_eq!(reply(Action::Ack, &r, &mut out), 6);
         assert_eq!(&out[..6], &[0xFF, 0xFF, MY_ID, 2, 0, !(MY_ID + 2)]);
+    }
+
+    /// Address 6 reads back the speed the board runs at, in Feetech's encoding, so a host
+    /// checking it the way it checks a servo sees the truth.
+    #[test]
+    fn the_baud_register_follows_the_jumper() {
+        let mut out = [0u8; 1];
+        read_map(&Registers::new(Baud::K500), 6, &mut out);
+        assert_eq!(out, [1]);
+        read_map(&Registers::new(Baud::M1), 6, &mut out);
+        assert_eq!(out, [0]);
+        assert_eq!(Baud::K500.bits_per_second(), 500_000);
+        assert_eq!(Baud::M1.bits_per_second(), 1_000_000);
+    }
+
+    #[test]
+    fn power_readings_convert_to_millivolts_and_milliamps() {
+        // VREFINT reads 1500 counts against a factory value of 1655 (taken at 3.0 V): 3.31 V.
+        assert_eq!(supply_mv(1500, 1655), 3310);
+        assert_eq!(supply_mv(0, 1655), 0);
+        // 12.6 V (3S full) puts 2.272 V on PA0: 2819 counts at 3.3 V.
+        let mv = battery_mv(2819, 3300);
+        assert!((12_580..=12_620).contains(&mv), "{mv}");
+        // 5 A through 2 mΩ × 50 = 0.5 V on PB7: 620 counts at 3.3 V.
+        let ma = current_ma(620, 3300);
+        assert!((4_980..=5_010).contains(&ma), "{ma}");
+        assert_eq!(battery_decivolts(7_449), 74);
+        assert_eq!(battery_decivolts(7_450), 75);
+        assert_eq!(battery_decivolts(60_000), 255);
+    }
+
+    #[test]
+    fn the_power_registers_and_block_byte_14_serve_the_readings() {
+        let r = Registers { power: power_bytes(8_400, 1_250, 3_300), ..Registers::new(Baud::K500) };
+        let mut out = [0u8; POWER_LEN];
+        read_map(&r, POWER_ADDR, &mut out);
+        assert_eq!(out, [0xD0, 0x20, 0xE2, 0x04, 0xE4, 0x0C]);
+        let mut b = [0u8; 1];
+        read_map(&r, BLOCK_ADDR + BLOCK_BATTERY as u8, &mut b);
+        assert_eq!(b, [84]);
     }
 }

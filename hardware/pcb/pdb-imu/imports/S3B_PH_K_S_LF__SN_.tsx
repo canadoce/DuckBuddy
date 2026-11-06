@@ -1,0 +1,42 @@
+import type { ChipProps } from "@tscircuit/props"
+
+const pinLabels = {
+  pin1: ["pin1"],
+  pin2: ["pin2"],
+  pin3: ["pin3"]
+} as const
+
+export const S3B_PH_K_S_LF__SN_ = (props: ChipProps<typeof pinLabels>) => {
+  return (
+    <chip
+      pinLabels={pinLabels}
+      supplierPartNumbers={{
+  "jlcpcb": [
+    "C157929"
+  ]
+}}
+      manufacturerPartNumber="S3B-PH-K-S(LF)(SN)"
+      footprint={<footprint>
+        <platedhole  portHints={["pin3"]} pcbX="1.999996mm" pcbY="0mm" outerDiameter="1.499997mm" holeDiameter="0.9000236mm" shape="circle" />
+<platedhole  portHints={["pin2"]} pcbX="-0mm" pcbY="0mm" outerDiameter="1.499997mm" holeDiameter="0.9000236mm" shape="circle" />
+<platedhole  portHints={["pin1"]} pcbX="-1.999996mm" pcbY="0mm" holeWidth="0.9000236mm" holeHeight="0.9000236mm" outerWidth="1.499997mm" outerHeight="1.499997mm" rectPad={true} pcbRotation="0deg" shape="pill" />
+<silkscreenpath route={[{"x":1.0000233999999182,"y":-2.2495256000000836},{"x":1.0000233999999182,"y":-6.250025599999958}]} />
+<silkscreenpath route={[{"x":1.0000233999999182,"y":-2.2495256000000836},{"x":-0.9989312000000155,"y":-2.2495256000000836},{"x":-0.9989312000000155,"y":-6.250025599999958}]} />
+<silkscreenpath route={[{"x":2.895803199999932,"y":-0.2500122000000147},{"x":2.9999939999999015,"y":-0.2500122000000147},{"x":2.9999939999999015,"y":1.349984599999857},{"x":3.950004799999874,"y":1.349984599999857},{"x":3.950004799999874,"y":-6.250000200000045}]} />
+<silkscreenpath route={[{"x":0.8958071999998083,"y":-0.2500122000000147},{"x":1.1041887999999744,"y":-0.2500122000000147}]} />
+<silkscreenpath route={[{"x":-1.069797200000039,"y":-0.2500122000000147},{"x":-0.8958072000000357,"y":-0.2500122000000147}]} />
+<silkscreenpath route={[{"x":3.950004799999874,"y":-6.250000200000045},{"x":-3.9499794000000747,"y":-6.250000200000045},{"x":-3.9499794000000747,"y":1.349984599999857},{"x":-2.999994000000015,"y":1.349984599999857},{"x":-2.999994000000015,"y":-0.2500122000000147},{"x":-2.930067800000188,"y":-0.2500122000000147}]} />
+<silkscreentext text="{NAME}" pcbX="-0.007112mm" pcbY="2.36144mm" anchorAlignment="center" fontSize="1mm" />
+<fabricationnotepath route={[{"x":-3.99999200000002,"y":-5.400014600000077},{"x":-3.99999200000002,"y":-6.200013000000013},{"x":-3.8999922000000424,"y":-6.30001279999999},{"x":3.8999922000000424,"y":-6.30001279999999},{"x":3.99999200000002,"y":-6.200013000000013},{"x":3.99999200000002,"y":-5.600014200000146},{"x":3.8999922000000424,"y":-5.600014200000146},{"x":3.8999922000000424,"y":-6.200013000000013},{"x":-3.8999922000000424,"y":-6.200013000000013},{"x":-3.8999922000000424,"y":-5.400014600000077},{"x":-3.99999200000002,"y":-5.400014600000077}]} strokeWidth="0mm" isFilled hasStroke={false} />
+<courtyardoutline outline={[{"x":-4.199979400000075,"y":1.599984599999857},{"x":4.200004799999874,"y":1.599984599999857},{"x":4.200004799999874,"y":-6.500000200000045},{"x":-4.199979400000075,"y":-6.500000200000045},{"x":-4.199979400000075,"y":1.599984599999857}]} />
+      </footprint>}
+      cadModel={{
+        objUrl: "https://modelcdn.tscircuit.com/easyeda_models/assets/C157929.obj?uuid=34ff8836248648119b083f641041fec0",
+        stepUrl: "https://modelcdn.tscircuit.com/easyeda_models/assets/C157929.step?uuid=34ff8836248648119b083f641041fec0",
+        pcbRotationOffset: 0,
+        modelOriginPosition: { x: 0.00048730000004337803, y: 3.25000779999998, z: 0.09999300000000044 },
+      }}
+      {...props}
+    />
+  )
+}
