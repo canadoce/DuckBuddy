@@ -32,20 +32,20 @@ FOUR = "2:{v},0;4:-{v},0;6:0,{v};8:0,-{v}"
 
 # name: (caption, policy key, vx, extra sim flags, camera, playback speed)
 CLIPS = {
-    "walk-side": ("正常行走 0.2 m/s（侧面）", "walk", 0.2, [], SIDE, 1.0),
-    "walk-front": ("正常行走 0.2 m/s（前侧）", "walk", 0.2, [], FRONT, 1.0),
-    "walk-side-slow": ("正常行走 0.2 m/s（侧面，0.5 倍速）", "walk", 0.2, [], SIDE, 0.5),
-    "walk-pushes": ("行走中推 0.3 m/s：前 / 后 / 左 / 右", "walk", 0.2, ["--push", FOUR.format(v=0.3)], FRONT, 1.0),
-    "walk-pushes-side": ("行走中推 0.3 m/s（侧面）", "walk", 0.2, ["--push", FOUR.format(v=0.3)], SIDE, 1.0),
-    "stand-pushes": ("站立（起身策略）推 0.3 m/s", "stand", 0.0, ["--push", FOUR.format(v=0.3)], FRONT, 1.0),
-    "walk-pushes-strong": ("行走中推 0.5 m/s（超出训练范围）", "walk", 0.2, ["--push", FOUR.format(v=0.5)], FRONT, 1.0),
-    "stress-walk-pushes": ("腿刚度 ×0.5 + 头重 ×1.3、延迟 40 ms，推 0.3 m/s", "walk", 0.2,
+    "walk-side": ("normal walk 0.2 m/s (side)", "walk", 0.2, [], SIDE, 1.0),
+    "walk-front": ("normal walk 0.2 m/s (front side)", "walk", 0.2, [], FRONT, 1.0),
+    "walk-side-slow": ("normal walk 0.2 m/s (side, 0.5x speed)", "walk", 0.2, [], SIDE, 0.5),
+    "walk-pushes": ("pushes while walking 0.3 m/s: forward / back / left / right", "walk", 0.2, ["--push", FOUR.format(v=0.3)], FRONT, 1.0),
+    "walk-pushes-side": ("pushes while walking 0.3 m/s (side)", "walk", 0.2, ["--push", FOUR.format(v=0.3)], SIDE, 1.0),
+    "stand-pushes": ("standing (stand-up policy), pushes 0.3 m/s", "stand", 0.0, ["--push", FOUR.format(v=0.3)], FRONT, 1.0),
+    "walk-pushes-strong": ("pushes while walking 0.5 m/s (beyond the training range)", "walk", 0.2, ["--push", FOUR.format(v=0.5)], FRONT, 1.0),
+    "stress-walk-pushes": ("leg stiffness ×0.5 + head mass ×1.3, delay 40 ms, pushes 0.3 m/s", "walk", 0.2,
                            ["--push", FOUR.format(v=0.3), "--kp-scale", legs(0.5), "--delay-ms", "40"] + HEAVY,
                            FRONT, 1.0),
     # robotd's IMU path as measured on the robot (2026-10-10): median of 3 ticks plus ~10 ms
-    "walk-imu-lag": ("机器人的 IMU 路径：中值滤波 + 10 ms", "walk", 0.2, ["--imu-median", "1", "--imu-lag-ms", "10"],
+    "walk-imu-lag": ("the robot's IMU path: median filter + 10 ms", "walk", 0.2, ["--imu-median", "1", "--imu-lag-ms", "10"],
                      FRONT, 1.0),
-    "walk-imu-lag-side": ("机器人的 IMU 路径：中值滤波 + 10 ms（侧面）", "walk", 0.2,
+    "walk-imu-lag-side": ("the robot's IMU path: median filter + 10 ms (side)", "walk", 0.2,
                           ["--imu-median", "1", "--imu-lag-ms", "10"], SIDE, 1.0),
 }
 
@@ -94,7 +94,7 @@ def main():
     with ProcessPoolExecutor(a.workers) as ex:
         rows = list(ex.map(render, names, [policies[CLIPS[n][1]] for n in names], [a.out] * len(names),
                            [a.size] * len(names), [a.duration] * len(names)))
-    print("| 片段 | 策略 | 摔倒 | 前进 m | 俯仰 min / max ° | 偏航 ° |\n|---|---|---|---|---|---|")
+    print("| clip | policy | fell | forward m | pitch min / max ° | yaw ° |\n|---|---|---|---|---|---|")
     print("\n".join(rows))
 
 

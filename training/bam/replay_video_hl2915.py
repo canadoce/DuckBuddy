@@ -95,7 +95,7 @@ def main():
         frame = renderer.render()
         t = (i - i0) / 50.0
         label = a.caption or os.path.basename(a.recording)
-        state = "站立" if t < 0 else ("行走" if r.get("policy") == "walk" else str(r.get("policy")))
+        state = "stand" if t < 0 else ("walk" if r.get("policy") == "walk" else str(r.get("policy")))
         frame = sh.caption_frame(frame, f"{label}  [{state}]", t, pitch, None, None)
         frames.append(frame)
     renderer.close()

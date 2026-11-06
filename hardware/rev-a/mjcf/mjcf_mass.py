@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""把 MJCF 里的舵机质量从 XL330(18g) 改成 HL-2915-C001(实测 28g)，重算每个连杆的
-质量 / 质心 / 惯量张量；再把舵机以外的质量整体缩放，使整机等于实测总重。
+"""Change the servo mass in the MJCF from XL330 (18g) to HL-2915-C001 (measured 28g), recompute each link's
+mass / center of mass / inertia tensor; then scale all the non-servo mass so the whole robot equals the measured total.
 
-实测（2026-10-05，含 3S 1500mAh 电池 119.6g）：整机 850g，单只舵机 28g。
-只有总重、没有分件重量，所以非舵机部分（打印件、电子板、电池、线束）按同一比例
-缩放：各连杆非舵机部分的质心不动，惯量随质量等比。拿到分件重量后改成逐连杆设定。
+Measured (2026-10-05, with the 3S 1500mAh battery, 119.6g): whole robot 850g, one servo 28g.
+There is only the total, no per-part weights, so the non-servo parts (printed parts, boards, battery, wiring) are scaled
+by one factor: the non-servo center of mass of each link stays, the inertia scales with the mass. Once per-part weights are known, set each link on its own.
 
-质量与质心为精确计算；舵机的自身惯量用等效各向同性近似（34x20x23mm 均质长方体
-三个主惯量的平均），因为 geom 的朝向各不相同而最终仍要以实测为准。平行轴项是精确的。
+Mass and center of mass are exact; the servo's own inertia uses an equivalent isotropic approximation (the mean of the three principal
+inertias of a 34x20x23mm uniform box), because the geoms all point different ways and the final values must come from measurement anyway. The parallel-axis terms are exact.
 """
 import re, os
 
@@ -17,9 +17,9 @@ SRC_DIR = os.path.join(OUT_DIR, "..", "..", "original", "mjcf")
 FILES = ["robot_walk.xml", "robot_allcollisions.xml", "robot_allcollisions_rollers.xml"]
 
 M_OLD = 0.018           # XL330, kg
-M_NEW = 0.028           # HL-2915-C001，实测, kg
-MEASURED_TOTAL = 0.850  # 整机实测（含电池）, kg
-# 34 x 20 x 23 mm 均质长方体，单位质量时三个主惯量的平均值
+M_NEW = 0.028           # HL-2915-C001, measured, kg
+MEASURED_TOTAL = 0.850  # whole robot, measured (with battery), kg
+# 34 x 20 x 23 mm uniform box, the mean of the three principal inertias for unit mass
 A, B, C = 0.034, 0.020, 0.023
 I_UNIT = ((B*B+C*C) + (A*A+C*C) + (A*A+B*B)) / 3 / 12
 
@@ -31,13 +31,13 @@ def nums(s):
 
 
 def pa(m, r):
-    """点质量 m 在相对参考点 r 处的惯量张量贡献，返回 (ixx,iyy,izz,ixy,ixz,iyz)。"""
+    """Inertia tensor part of a point mass m at offset r from the reference point, returns (ixx,iyy,izz,ixy,ixz,iyz)."""
     x, y, z = r
     return (m*(y*y+z*z), m*(x*x+z*z), m*(x*x+y*y), -m*x*y, -m*x*z, -m*y*z)
 
 
 def servo_positions(blk):
-    """本 body 直属的 xl330 geom 位置（嵌套 body 已被切到别的块里）。"""
+    """Positions of the xl330 geoms directly in this body (nested bodies are already cut into other blocks)."""
     out = []
     for m in re.finditer(r'<!-- Part xl330[_0-9]* -->(.*?)(?=<!-- Part |\Z)', blk, re.S):
         g = re.search(r'<geom[^>]*pos="([^"]+)"', m.group(1))
@@ -46,12 +46,12 @@ def servo_positions(blk):
 
 
 def blocks(t):
-    """按 <body 边界切块：每个 <body ...> 到下一个 <body 之间，含其 inertial 与 Part 注释。"""
+    """Cut into blocks at <body boundaries: from each <body ...> to the next <body, with its inertial and Part comments."""
     return re.split(r'(?=<body )', t)
 
 
 def rest_scale(t, total=MEASURED_TOTAL):
-    """非舵机部分的缩放系数，及舵机数、原非舵机总质量。"""
+    """The scale factor for the non-servo parts, plus the servo count and the original non-servo total mass."""
     rest, n = 0.0, 0
     for blk in blocks(t):
         mi = INERTIAL.search(blk) if blk.startswith("<body ") else None
@@ -68,7 +68,7 @@ def total_mass(t):
 
 
 def process(path, out, total=MEASURED_TOTAL):
-    """path 的 XL330 换成 HL-2915、其余按比例缩放到 total，写到 out，返回逐连杆报告。"""
+    """Replace the XL330s in path with HL-2915s, scale the rest to total, write to out, return a per-link report."""
     t = open(path, encoding="utf-8").read()
     S, _, _ = rest_scale(t, total)
     report = []
@@ -85,9 +85,9 @@ def process(path, out, total=MEASURED_TOTAL):
 
         c0 = nums(mi.group(1))
         m0 = float(mi.group(2))
-        I0 = nums(mi.group(3))          # ixx iyy izz ixy ixz iyz，关于 c0
+        I0 = nums(mi.group(3))          # ixx iyy izz ixy ixz iyz, about c0
 
-        # 1) 剥掉 XL330，得到"其余部分"的质量 / 质心 / 惯量（关于 cr）
+        # 1) remove the XL330s, get the mass / center of mass / inertia of "the rest" (about cr)
         mr = m0 - n*M_OLD
         cr = [(m0*c0[k] - M_OLD*sum(p[k] for p in servos)) / mr for k in range(3)]
         Ir = list(I0)
@@ -98,10 +98,10 @@ def process(path, out, total=MEASURED_TOTAL):
         a = pa(mr, [cr[k]-c0[k] for k in range(3)])
         Ir = [Ir[k] - a[k] for k in range(6)]
 
-        # 2) 其余部分按实测总重缩放
+        # 2) scale the rest to the measured total
         mr, Ir = mr*S, [x*S for x in Ir]
 
-        # 3) 装上 HL-2915，合成到新质心 c1
+        # 3) add the HL-2915s, combine about the new center of mass c1
         m1 = mr + n*M_NEW
         c1 = [(mr*cr[k] + M_NEW*sum(p[k] for p in servos)) / m1 for k in range(3)]
         a = pa(mr, [cr[k]-c1[k] for k in range(3)])
@@ -127,14 +127,14 @@ if __name__ == "__main__":
     for f in FILES:
         rep = process(os.path.join(SRC_DIR, f), os.path.join(OUT_DIR, f))
         if f == FILES[0]:
-            print(f"{'连杆':<20}{'舵机':>5}{'原质量g':>10}{'新质量g':>10}{'质心移动mm':>12}")
+            print(f"{'link':<20}{'servo':>5}{'old g':>10}{'new g':>10}{'CoM move mm':>12}")
             for n, k, a, b, d in rep:
                 print(f"{n:<20}{k:>5}{a:>10.1f}{b:>10.1f}{d:>12.2f}")
             print()
-        print(f"{f}: 更新 {len(rep)} 个连杆")
+        print(f"{f}: updated {len(rep)} links")
 
     t = open(os.path.join(SRC_DIR, FILES[0]), encoding="utf-8").read()
     S, n, rest = rest_scale(t)
     new_total = total_mass(open(os.path.join(OUT_DIR, FILES[0]), encoding="utf-8").read())
-    print(f"\n舵机 {n} 只 x {M_NEW*1000:.1f} g；非舵机部分 {rest*1000:.1f} g x {S:.3f} = {rest*S*1000:.1f} g")
-    print(f"整机质量: {total_mass(t)*1000:.1f} g -> {new_total*1000:.1f} g（实测 {MEASURED_TOTAL*1000:.0f} g）")
+    print(f"\nservos {n} x {M_NEW*1000:.1f} g; non-servo parts {rest*1000:.1f} g x {S:.3f} = {rest*S*1000:.1f} g")
+    print(f"whole robot mass: {total_mass(t)*1000:.1f} g -> {new_total*1000:.1f} g (measured {MEASURED_TOTAL*1000:.0f} g)")
