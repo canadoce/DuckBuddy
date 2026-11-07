@@ -5,7 +5,9 @@ BindsTo=robotd-dev.service
 After=robotd-dev.service padd-dev.service
 
 [Service]
-ExecStart=/usr/bin/python3 %h/lifed/lifed.py
+# LIFED_ARGS, extra lifed arguments, e.g. --jev-timeout 2.5 for a slower Jev (deploy never overwrites it)
+EnvironmentFile=-%h/robot/lifed.env
+ExecStart=/usr/bin/python3 %h/lifed/lifed.py $LIFED_ARGS
 WorkingDirectory=%h/lifed
 StandardOutput=append:%h/robot/recs/lifed-service.log
 StandardError=append:%h/robot/recs/lifed-service.log

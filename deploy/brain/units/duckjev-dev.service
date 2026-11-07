@@ -1,0 +1,18 @@
+[Unit]
+Description=duckjev (brain): Jev judgments (a System One server) for duckbrain's /judge, 127.0.0.1:8211
+
+[Service]
+# DUCKBRAIN_SYSTEMONE_URL, the root of a System One server of your own (no key, trusted network),
+# for example http://192.168.1.222:8006 (deploy/brain/README.md). Without it every judgment answers
+# no_api_key and the duck keeps to its rules.
+EnvironmentFile=-%h/.config/duckbrain/jev.env
+Environment=DUCKBRAIN_JUDGE_LOG=%h/robot/recs/judge-log.jsonl
+ExecStart=/usr/bin/python3 %h/duckbrain/judge.py 8211
+WorkingDirectory=%h/duckbrain
+StandardOutput=append:%h/robot/recs/duckjev-service.log
+StandardError=append:%h/robot/recs/duckjev-service.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

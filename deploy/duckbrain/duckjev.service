@@ -13,6 +13,10 @@ EnvironmentFile=-%h/.config/duckbrain/typesafe.env
 # unit does not inherit: its HTTP(S)_PROXY / NO_PROXY copied there, mode 600 (the user agreed 2026-10-17).
 # Not ALL_PROXY: it is socks5h, which httpx2 cannot use without socksio.
 EnvironmentFile=-%h/.config/duckbrain/proxy.env
+# Or a System One server of your own (same request and answers, no key, trusted network only): set its
+# root, and neither the key, the proxy nor typesafe-sdk is needed. Box questions are then left out
+# unless DUCKBRAIN_JEV_BOX=1 (tools/duckbrain/judge.py).
+#Environment=DUCKBRAIN_SYSTEMONE_URL=http://192.168.1.222:8006
 ExecStart=/data/microduck/tts/jev-venv/bin/python /data/microduck/tts/duckbrain/judge.py 8211
 StandardOutput=append:/data/microduck/tts/duckjev.log
 StandardError=append:/data/microduck/tts/duckjev.log

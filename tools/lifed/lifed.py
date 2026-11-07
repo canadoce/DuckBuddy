@@ -25,6 +25,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -49,7 +50,8 @@ BRAIN_RETRY_S = 60.0
 # brain, so it adds nothing to the brain's ~0.7 s; past this it is skipped and the rules decide.
 TOF_CENTRE = [r * 8 + c for r in range(2, 6) for c in range(2, 6)]
 LOOK_TIMEOUT_S = 8.0          # a photo up through frp and the 27B looking (0.6 s on the box)
-JEV_TIMEOUT_S = 1.2           # Jev answers in 0.3-0.5 s from here, 1.0 s on a cold connection (10-17)
+JEV_TIMEOUT_S = 1.2           # Jev answers in 0.3-0.5 s from here, 1.0 s on a cold connection (10-17);
+                              # --jev-timeout for a slower one (a local System One server: ~1.9 s)
 
 
 class Clock:
@@ -425,6 +427,7 @@ class Lifed:
         self.last_say = ""
         self.last_meaning = ""
         self.jev_mode = a.jev
+        self.jev_timeout = a.jev_timeout
         self.jev_stats = {"ok": 0, "fallback": 0, "last_error": None, "recent": []}
         self.rng = random.Random()
 
@@ -490,7 +493,8 @@ class Lifed:
             r = await self.robot.request("robot.do", {"skill": a["skill"]})
             log(f"robot.do {a['skill']}: {r.get('result') or r.get('error')}")
         elif k == "ask":
-            asyncio.create_task(self.ask_brain(a["text"], a.get("session", "xiaobai"), a.get("named", True)))
+            asyncio.create_task(self.ask_brain(a["text"], a.get("session", "xiaobai"), a.get("named", True),
+                                               a.get("speaker")))
         elif k == "speak":
             asyncio.create_task(self.speak(a["pinyin"], a.get("mood", ""), a.get("delay_s", 0.0)))
         elif k == "voice":
@@ -775,10 +779,11 @@ class Lifed:
         except OSError as e:
             log(f"voice {a['clip']}: {e!r}")
 
-    def context(self) -> str:
-        """What the duck is like right now, in a few words, for the brain."""
+    def context(self, speaker: str | None = None) -> str:
+        """What the duck is like right now, in a few words, for the brain; and who is talking to it,
+        when voiced knows their voice (voices.py)."""
         b, inner = self.body, self.life.inner
-        bits = []
+        bits = [f"talking with {speaker}"] if speaker else []
         post = {"standing": "standing", "walking": "walking", "sitting": "sitting", "resting": "sitting and resting",
                 "lying": "lying down", "rising": "getting up", "fallen": "just fell over"}.get(b.posture)
         if post:
@@ -808,11 +813,12 @@ class Lifed:
                                battery_pct=b.battery_pct, valence=inner.valence, arousal=inner.arousal,
                                hour=None if now is None else now[0], minute=0 if now is None else now[1])
 
-    async def judge(self, kind: str, state: dict, images: dict | None = None, timeout: float = JEV_TIMEOUT_S):
+    async def judge(self, kind: str, state: dict, images: dict | None = None, timeout: float | None = None):
         """Jev's typed answers through duckbrain's /judge, or None: Jev off, the brain box out of
         reach, no key there, an error or too slow. Every None counts as a fallback to the rules."""
         if self.jev_mode == "off":
             return None
+        timeout = self.jev_timeout if timeout is None else timeout
         if time.monotonic() < self.brain_down_until:
             self._jev_fallback("brain down")
             return None
@@ -842,9 +848,9 @@ class Lifed:
         self.jev_stats["fallback"] += 1
         self.jev_stats["last_error"] = why
 
-    async def _call_brain(self, text, session):
+    async def _call_brain(self, text, session, speaker=None):
         """The brain's expression, or None when it cannot be reached (and then not for a minute)."""
-        body = json.dumps({"text": text, "context": self.context(), "session": session}).encode()
+        body = json.dumps({"text": text, "context": self.context(speaker), "session": session}).encode()
 
         def call():
             req = urllib.request.Request(self.brain + "/express", data=body,
@@ -856,6 +862,11 @@ class Lifed:
             reply = await asyncio.to_thread(call)
             log(f"brain {time.monotonic() - t0:.2f} s: {text!r} -> {json.dumps(reply, ensure_ascii=False)}")
             return reply
+        except urllib.error.HTTPError as e:
+            # the brain is there, its answer failed (no chat LLM yet, say): this time only, so Jev,
+            # asked through the same brain, keeps being asked
+            log(f"brain answered HTTP {e.code} after {time.monotonic() - t0:.2f} s; the small brain answers")
+            return None
         except (OSError, ValueError) as e:
             self.brain_down_until = time.monotonic() + BRAIN_RETRY_S
             log(f"brain unreachable after {time.monotonic() - t0:.2f} s ({e!r}); the small brain answers"
@@ -868,17 +879,17 @@ class Lifed:
         log(f"small brain: {text!r} -> {json.dumps(reply, ensure_ascii=False)}")
         return reply
 
-    async def ask_brain(self, text, session="xiaobai", named=True):
+    async def ask_brain(self, text, session="xiaobai", named=True, speaker=None):
         """Something said to the duck: Jev's view of it and the brain's answer, asked together.
         Jev may drop it (not for the duck), turn it into a command the keywords missed, or (mode on)
         let it be a nod or the small brain's quick answer; otherwise the brain answers — or, when it
         cannot be reached, the small brain. One brain session per conversation."""
         brain = None
         if time.monotonic() >= self.brain_down_until:
-            brain = asyncio.create_task(self._call_brain(text, session))
+            brain = asyncio.create_task(self._call_brain(text, session, speaker))
         answers = await self.judge("utterance", {
             "text": text, "named": named, "in_conversation": self.life.in_convo(),
-            "duck_last_said": self.last_meaning, "duck_is": self.context()})
+            "duck_last_said": self.last_meaning, "duck_is": self.context(speaker)})
         recent = self.life.t - self.life.last_spoke < judgments.RECENT_S
         d = judgments.decide_utterance(answers, named, self.jev_mode, recent)
         if d.summary:
@@ -1034,6 +1045,8 @@ def main():
     ap.add_argument("--jev", choices=judgments.MODES, default="shadow",
                     help="Jev on what is said: off; shadow (drop garbage, catch missed commands); on (also no reply "
                          "for murmurs, the small brain for greetings)")
+    ap.add_argument("--jev-timeout", type=float, default=JEV_TIMEOUT_S,
+                    help="seconds to wait for Jev before the rules decide alone")
     ap.add_argument("--tz-hours", type=float, default=None,
                     help="a fixed time zone, hours from UTC (default: the system's zone)")
     a = ap.parse_args()
