@@ -33,7 +33,7 @@ phone or the cloud.
 ## What makes DuckBuddy special?
 
 - 🦆 **Motion** — Reinforcement-learning policies retrained for our Feetech HL-2915 servos: walking, getting up after a fall, sitting down and standing up, a forward roll (trained in sim). A 50 Hz loop that guards against falls, heat, a flat battery and a lost link
-- 👂 **Hearing** — Offline speech recognition (SenseVoice) with denoising and voice detection; two microphones in the head tell which side a voice came from, so it turns to look when you call it
+- 👂 **Hearing** — Offline English speech recognition (Moonshine) with denoising and voice detection; it knows the people it has met by their voice ("my name is ..."); two microphones in the head tell which side a voice came from, so it turns to look when you call it
 - 👀 **Vision** — Notices faces and things that move and turns to look, naturally (being tested on the robot); joins Wi-Fi from a QR code; "what is this?" answered by a multimodal model when online
 - 🧭 **Autonomy** — A mission layer: say a string of moves ("two steps forward, turn around, sit down") and it plans and does them in turn; walking a spoken route is being tested on the robot
 - 💗 **A life layer** — Drives and moods; it tires, rests and keeps its servos cool (a hot head moves less); it answers in duck-speak rather than a text-to-speech voice; its name and character live in one persona file — swap it and you have a different duck
@@ -55,7 +55,7 @@ service runs on its own on the Orange Pi and they talk JSON over local Unix sock
 flowchart TB
   subgraph ROBOT["On the robot · Orange Pi (Linux)"]
     subgraph SENSE["Senses"]
-      VOICED["voiced · Python<br/>denoise · VAD · SenseVoice offline ASR<br/>sound direction from two mics"]
+      VOICED["voiced · Python<br/>denoise · VAD · Moonshine offline ASR<br/>who spoke · sound direction from two mics"]
       VISIOND["visiond · Python + duckcam<br/>faces (YuNet) · motion · Wi-Fi QR · photos"]
       TOFD["tofd · Rust<br/>8×8 ranging"]
     end
@@ -155,7 +155,7 @@ flowchart LR
 |---|---|---|
 | `robotd` | Rust | the 50 Hz control loop running ONNX policies; Feetech HLS bus driver, battery identification (2S/3S, LiPo/LiHV), heat and fall guards |
 | `lifed` | Python | the life layer: state machine, drives and moods, attention, missions, an offline small brain, head motion |
-| `voiced` | Python | denoising, voice detection, offline recognition (SenseVoice), sound direction from two microphones |
+| `voiced` | Python | denoising, voice detection, offline English recognition (Moonshine), who is speaking (voice prints), sound direction from two microphones |
 | `visiond` | Python | the camera: faces (YuNet), motion, Wi-Fi by QR code, snapshots |
 | `tofd` | Rust | 8×8 ToF ranging: distance ahead, someone close |
 | `padd` | Rust | Xbox gamepad over Bluetooth; outranks `lifed` |
@@ -208,6 +208,7 @@ flowchart LR
 | 6. Servos, zero pose, whole-robot test | [tools/bringup](tools/bringup/README.md): a web workbench on your computer - servo IDs, joint mapping, zero calibration, IMU firmware, self-test, each page with a guide. New servos are set up on a Raspberry Pi test bench with a second Robot HAT E1, in place of the Feetech USB board (`--bench`) | ✅ |
 | 7. Policies | trained policies ship in the repo; to train your own see [training](training) | ✅ |
 | 8. Give it a character | [tools/persona](tools/persona/README.md): write your own persona JSON after the example duck | ✅ |
+| Try it on a computer | [tools/sim](tools/sim/README.md): `uv run tools/sim/phoebe_sim.py --open` runs every service on a Mac, with a web page for the body: the browser's mic, camera and speakers, a ToF slider, tilt buttons | ✅ |
 | 9. Assembly guide, FAQ | a short FAQ below; an illustrated assembly guide is coming | 🚧 |
 
 ### Parts list
@@ -254,10 +255,10 @@ flowchart LR
 | Path | What |
 |---|---|
 | `robotd`, `duck-control`, `kinematics`, `padd`, `robotctl`, … | the Rust workspace (from Microduck, extended) |
-| `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `duckbrain`, `persona`, the bring-up workbench `bringup`, robot test scripts |
+| `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `duckbrain`, `persona`, the bring-up workbench `bringup`, the Mac simulator `sim`, robot test scripts |
 | `firmware/imu-feetech` | the IMU board's firmware (STM32G031 + LSM6DSV16X, speaks the Feetech protocol) |
 | `training/` | HL-2915 tasks, actuator identification (BAM), evaluation scripts, trained policies |
-| `hardware/` | the print project (`hardware/print`), the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit), the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate (`hardware/cad/lipo-plate`, build123d), the robot model used for training (`hardware/rev-a/mjcf`) |
+| `hardware/` | the print project (`hardware/print`), the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit), the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate (`hardware/cad/lipo-plate`, build123d), the servo dummy (`hardware/cad/servo-dummy`), the robot model used for training (`hardware/rev-a/mjcf`) |
 | `docs/` | the hardware interface (`docs/hardware`), and Microduck's own design notes and guides |
 
 </details>

@@ -287,6 +287,11 @@ struct Args {
     #[arg(long)]
     fake: bool,
 
+    /// With `--fake`: a file holding the gravity the fake IMU reports ("x y z", trunk frame;
+    /// upright is `0 0 -1`), re-read five times a second. How tools/sim tips the robot over.
+    #[arg(long, requires = "fake")]
+    fake_tilt: Option<PathBuf>,
+
     /// Do not load a policy: run the loop and hold the startup pose.
     ///
     /// Distinct from a policy that failed to load, which is unhealthy. This is the
@@ -1001,6 +1006,7 @@ fn spawn_control_thread(
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
     let period = params.period();
     let fake = args.fake;
+    let fake_tilt = args.fake_tilt.clone();
     let bus = params.bus.clone();
     let params = params.clone();
 
@@ -1023,6 +1029,9 @@ fn spawn_control_thread(
                 // A mid-pack voltage (3.7 V a cell) of the configured pack, so `--fake` also
                 // runs with a 3S-only config instead of refusing the fake 2S battery.
                 let mut io = FakeIo::at(DEFAULT_POSITION);
+                if let Some(path) = fake_tilt {
+                    io = io.tilted_by(path);
+                }
                 if let (Some(slow), Some(&cells)) =
                     (io.slow.as_mut(), params.battery.cells.first())
                 {

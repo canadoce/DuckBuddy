@@ -45,6 +45,31 @@ impl Default for ImuData {
     }
 }
 
+impl ImuData {
+    /// A still robot whose trunk sees gravity along `g` (any length; upright is `[0, 0, -1]`),
+    /// with the shortest rotation that takes `g` to the world's down as its orientation.
+    /// `None` for a zero vector. For fakes and tests: a real IMU measures both.
+    pub fn from_gravity(g: [f64; 3]) -> Option<Self> {
+        let n = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+        if !(n > 1e-9) {
+            return None;
+        }
+        let a = [g[0] / n, g[1] / n, g[2] / n];
+        // a → b = [0, 0, -1]: q = [1 + a·b, a × b], normalized; upside down turns about x.
+        let dot = -a[2];
+        let mut q = [1.0 + dot, -a[1], a[0], 0.0];
+        if q[0] < 1e-9 {
+            q = [0.0, 1.0, 0.0, 0.0];
+        }
+        let m = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
+        Some(Self {
+            gyro: [0.0; 3],
+            gravity: a,
+            quat: [q[0] / m, q[1] / m, q[2] / m, q[3] / m],
+        })
+    }
+}
+
 /// ±500 dps at 17.5 mdps/LSB, in rad/s.
 const GYRO_RAD_PER_LSB: f64 = 0.0175 * std::f64::consts::PI / 180.0;
 
