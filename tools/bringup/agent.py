@@ -696,8 +696,9 @@ def op_write_joint_ids(args):
     """Change the [bus] joint_ids line in the robot config: back it up first, read it back after the write, restore it if wrong."""
     import re
     ids = [int(i) for i in args.get("ids") or []]
-    if len(ids) != 15 or len(set(ids)) != 15:
-        raise BusError("joint_ids needs 15 different IDs")
+    servos = [i for i in ids if i != 0]   # 0: no servo on that joint (a printed dummy), robotd leaves it off the bus
+    if len(ids) != 15 or not servos or len(set(servos)) != len(servos):
+        raise BusError("joint_ids needs 15 entries, the servos' IDs all different (0 for a joint with no servo)")
     path = Ctx.cfg_path
     if Ctx.usb or not path or not os.path.exists(path):
         raise BusError(f"no config file to write ({path})")
@@ -874,9 +875,10 @@ def imu_on_i2c():
 
 
 def joint_list():
-    """The joint_ids from the config, and whether the IMU is on the servo bus (it is not with the BNO055)."""
+    """The servo IDs in the config's joint_ids (a 0, a joint with a printed dummy, has none), and whether
+    the IMU is on the servo bus (it is not with the BNO055)."""
     bus = bus_cfg()
-    ids = [int(i) for i in bus.get("joint_ids") or []]
+    ids = [int(i) for i in bus.get("joint_ids") or [] if int(i) != 0]
     return ids, bool(bus.get("imu", False)) and not imu_on_i2c()
 
 

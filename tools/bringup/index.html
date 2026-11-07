@@ -258,7 +258,7 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
   </div>
   <div class="card" style="margin-bottom:16px">
     <h2>Joint mapping (after assembly: which ID is in which joint)</h2>
-    <div class="muted">Wiggle them one by one and click the joint that moves. When all 15 are done, you can change the servo IDs to the order you want, or write the mapping straight into <code>joint_ids</code> in the config.
+    <div class="muted">Wiggle them one by one and click the joint that moves. When all 15 are done, you can change the servo IDs to the order you want, or write the mapping straight into <code>joint_ids</code> in the config. A joint with a printed dummy in place of its servo (<code>hardware/cad/servo-dummy</code>) has no ID: once every servo found has its joint, mark the rest as dummies (0 in <code>joint_ids</code>).
       It uses the bus chosen in "Bus / Baud" below; for the robot bus, stop robotd first. Left and right mean the <b>robot's own</b> left and right.</div>
     <div class="row">
       <label>Servo <select id="mp-mpc"><option value="0.65">HD-1910 (0.65 mA/count)</option><option value="6.5">HL-2915 (6.5 mA/count)</option></select></label>
@@ -537,7 +537,7 @@ async function refresh() {
     : `not running (unit ${esc(h.robotd_unit)} = ${esc(h.robotd_unit_state)})`;
   const ids = b.joint_ids || [];
   $("ov-joints").innerHTML = "<tr><th>Joint</th><th>ID</th><th>sign</th><th>offset</th></tr>" +
-    JOINTS.map((n, i) => `<tr><td>${JOINT_CN[i]}</td><td>${ids[i] ?? "—"}</td><td>${(b.joint_signs || [])[i] ?? ""}</td><td>${(b.joint_offsets || [])[i] ?? ""}</td></tr>`).join("");
+    JOINTS.map((n, i) => `<tr><td>${JOINT_CN[i]}</td><td>${ids[i] === 0 ? "dummy" : ids[i] ?? "—"}</td><td>${(b.joint_signs || [])[i] ?? ""}</td><td>${(b.joint_offsets || [])[i] ?? ""}</td></tr>`).join("");
   testWarn();
 }
 $("ov-refresh").onclick = e => busy(e.target, refresh);
@@ -672,6 +672,8 @@ $("sv-toff").onclick = e => busy(e.target, async () => { const r = await svCall(
 // MP.map[j] = the servo ID on joint j (JOINTS order); MP.cur = the ID being identified. Saved in localStorage, so a refresh keeps it.
 const XIAOBAI_IDS = [8, 11, 6, 7, 15, 4, 3, 5, 2, 1, 9, 10, 12, 13, 14];
 let MP = {ids: [], map: Array(15).fill(null), cur: null, target: "usb", baud: 500000, multi: []};
+// A joint with no servo (a printed dummy, hardware/cad/servo-dummy): joint_ids 0, which robotd leaves off the bus.
+const DUMMY = 0;
 let MP_OK = false, MP_STOP = false;
 try { const v = JSON.parse(localStorage.getItem("mp-state")); if (v?.map?.length === 15) MP = Object.assign(MP, v, {cur: null}); } catch (e) {}
 function mpSave() { try { localStorage.setItem("mp-state", JSON.stringify(MP)); } catch (e) {} }
@@ -696,7 +698,7 @@ function mpRender(msg, warn) {
   document.querySelectorAll("#mp-ids .badge").forEach(b => b.onclick = () => mpPick(+b.dataset.id));
   if (msg !== undefined) mpNow(msg, warn);
   const col = (title, idx) => `<div><h4>${title}</h4>` + idx.map(j =>
-    `<button data-j="${j}" class="${MP.map[j] != null ? "set" : ""}"><span>${JOINT_CN[j]}</span><b>${MP.map[j] ?? ""}</b></button>`).join("") + "</div>";
+    `<button data-j="${j}" class="${MP.map[j] != null ? "set" : ""}"><span>${JOINT_CN[j]}</span><b>${MP.map[j] === DUMMY ? "dummy" : MP.map[j] ?? ""}</b></button>`).join("") + "</div>";
   $("mp-grid").innerHTML = MP.ids.length ? col("Left leg", [0, 1, 2, 3, 4]) + col("Neck / head / mouth", [5, 6, 7, 8, 9]) + col("Right leg", [10, 11, 12, 13, 14]) : "";
   document.querySelectorAll("#mp-grid button").forEach(b => b.onclick = () => mpAssign(+b.dataset.j));
   mpOut(); mpSave();
@@ -725,6 +727,7 @@ async function mpPick(id) {
 }
 async function mpAssign(j) {
   if (MP.cur == null) {  // not identifying anything: clicking a joint = wiggle it to check
+    if (MP.map[j] === DUMMY) return toast("This joint has a dummy, no servo");
     if (MP.map[j] == null) return toast("This joint has no ID yet; first click a gray ID above to wiggle it");
     const r = await mpWiggle(MP.map[j], JOINT_CN[j]);
     if (r) mpNow(`Wiggled <b>${JOINT_CN[j]}</b> (ID ${MP.map[j]}): ${esc(r.msg)}. If a different joint moved, click the ID above to assign it again.`, !r.ok);
@@ -733,25 +736,42 @@ async function mpAssign(j) {
   const id = MP.cur, was = MP.map[j];
   MP.map = MP.map.map(x => x === id ? null : x); MP.map[j] = id;
   MP.cur = mpNext(id);
-  mpRender(`ID ${id} → <b>${JOINT_CN[j]}</b>` + (was != null && was !== id ? `; ID ${was}, which was here before, goes back to unassigned` : ""));
+  mpRender(`ID ${id} → <b>${JOINT_CN[j]}</b>` + (was != null && was !== id && was !== DUMMY ? `; ID ${was}, which was here before, goes back to unassigned` : ""));
   if (MP.cur != null && $("mp-auto").checked) await mpPick(MP.cur);
   else if (MP.cur != null) mpRender(`Next: ID ${MP.cur}, click the orange tag above to wiggle it`);
 }
 function mpTemplate() {
   const v = $("mp-tpl")?.value || "seq";
-  if (v === "seq") return [...Array(15).keys()].map(i => i + 1);
-  if (v === "xiaobai") return XIAOBAI_IDS.slice();
-  if (v === "config") return (HELLO?.bus?.joint_ids || []).map(Number);
-  return parseIds($("mp-custom").value);
+  let t;
+  if (v === "seq") t = [...Array(15).keys()].map(i => i + 1);
+  else if (v === "xiaobai") t = XIAOBAI_IDS.slice();
+  else if (v === "config") t = (HELLO?.bus?.joint_ids || []).map(Number);
+  else t = parseIds($("mp-custom").value);
+  // a joint with a dummy keeps no servo, whatever the template says
+  return t.length === 15 ? t.map((id, j) => MP.map[j] === DUMMY ? DUMMY : id) : t;
+}
+// 15 entries, the servo IDs among them all different
+function mpValid(t) {
+  const servos = t.filter(id => id !== DUMMY);
+  return t.length === 15 && servos.length > 0 && new Set(servos).size === servos.length;
 }
 function mpOut() {
   const n = MP.map.filter(x => x != null).length;
   if (!MP.ids.length) { $("mp-out").innerHTML = ""; return; }
-  if (n < 15) { $("mp-out").innerHTML = `<div class="muted">${n} / 15 matched.</div>`; return; }
+  if (n < 15) {
+    const left = 15 - n;
+    if (MP.cur == null && !mpFree().length) {
+      $("mp-out").innerHTML = `<div class="note">${n} / 15 matched, and every servo found has its joint.
+        <button id="mp-dummy">The other ${left} joints have dummies (no servo)</button></div>`;
+      $("mp-dummy").onclick = () => { MP.map = MP.map.map(x => x ?? DUMMY); mpRender(""); };
+    } else $("mp-out").innerHTML = `<div class="muted">${n} / 15 matched.</div>`;
+    return;
+  }
+  const dummies = MP.map.filter(x => x === DUMMY).length;
   const cfgIds = HELLO?.bus?.joint_ids || [];
   const keep = $("mp-tpl")?.value || "seq", custom = $("mp-custom")?.value || "";
   const canWrite = MP.target === "robot" && HELLO?.config_found;
-  $("mp-out").innerHTML = `<div class="note">All 15 joints are matched. With the servos' current IDs, the config should have:<br><code>joint_ids = [${MP.map.join(", ")}]</code></div>
+  $("mp-out").innerHTML = `<div class="note">All 15 joints are matched${dummies ? ` (${dummies} with a dummy: 0 in joint_ids, left off the bus)` : ""}. With the servos' current IDs, the config should have:<br><code>joint_ids = [${MP.map.join(", ")}]</code></div>
     <div class="row"><button id="mp-check">Left/right check</button><button id="mp-stop">Stop check</button>
       <span class="muted">Wiggles each pair of matching leg joints, left then right, then neck, head and mouth one by one; the button of the joint that is moving gets a frame.</span></div>
     <h2>Then pick one of two</h2>
@@ -771,7 +791,7 @@ function mpOut() {
   const plan = () => {
     $("mp-custom").style.display = $("mp-tpl").value === "custom" ? "" : "none";
     const t = mpTemplate();
-    if (t.length !== 15 || new Set(t).size !== 15) { $("mp-plan").textContent = "The target needs 15 different IDs"; return; }
+    if (!mpValid(t)) { $("mp-plan").textContent = "The target needs 15 entries, the servos' IDs all different"; return; }
     const mv = MP.map.map((id, j) => [id, t[j], j]).filter(m => m[0] !== m[1]);
     $("mp-plan").textContent = mv.length ? `Changes ${mv.length} servos: ` + mv.map(m => `${JOINT_CN[m[2]]} ${m[0]}→${m[1]}`).join(", ") : "Already in this order, nothing to change";
   };
@@ -789,6 +809,7 @@ async function mpCheck() {
   let done = true;
   for (const j of seq) {
     if (MP_STOP) { done = false; mpNow("Check stopped"); break; }
+    if (MP.map[j] === DUMMY) continue;
     document.querySelectorAll("#mp-grid button").forEach(b => b.classList.toggle("chk", +b.dataset.j === j));
     const r = await mpWiggle(MP.map[j], JOINT_CN[j]);
     if (!r || !r.ok) { done = false; if (r) mpNow(`<b>${JOINT_CN[j]}</b> (ID ${MP.map[j]}): ${esc(r.msg)}`, true); break; }
@@ -798,7 +819,7 @@ async function mpCheck() {
 }
 async function mpRemap() {
   const t = mpTemplate();
-  if (t.length !== 15 || new Set(t).size !== 15) return toast("The target needs 15 different IDs", true);
+  if (!mpValid(t)) return toast("The target needs 15 entries, the servos' IDs all different", true);
   const moves = MP.map.map((id, j) => [id, t[j]]).filter(m => m[0] !== m[1]);
   if (!moves.length) return toast("Already in this order, nothing to change");
   if (!confirm(`Change the IDs of ${moves.length} servos (writes EEPROM):\n${moves.map(m => m[0] + "→" + m[1]).join("  ")}\n\nFirst moves all of them to temporary IDs (160 + new ID), then to the new IDs. Do not cut power during this.`)) return;
@@ -825,10 +846,10 @@ $("mp-start").onclick = e => busy(e.target, async () => {
   if (!servos.length) return toast(`No servos found on ID 0–39 at ${baud}`, true);
   const ids = servos.map(s => s.id);
   const same = MP.target === target && MP.baud === baud;
-  MP = {ids, map: same ? MP.map.map(x => ids.includes(x) ? x : null) : Array(15).fill(null), cur: null,
+  MP = {ids, map: same ? MP.map.map(x => x === DUMMY || ids.includes(x) ? x : null) : Array(15).fill(null), cur: null,
         target, baud, multi: servos.filter(s => s.multi_turn).map(s => s.id)};
   const multi = MP.multi.length ? `; ID ${MP.multi.join(", ")} have multi-turn readings and cannot wiggle; cut servo power, power on again, then scan again` : "";
-  mpRender(`Found ${ids.length} servos${ids.length === 15 ? "" : " (should be 15: if some are missing, check the cables and sockets first)"}${multi}.`, ids.length !== 15 || !!multi);
+  mpRender(`Found ${ids.length} servos${ids.length === 15 ? "" : " (should be 15: if some are missing, check the cables and sockets first; a joint with a printed dummy has none, mark it once every servo is matched)"}${multi}.`, ids.length !== 15 || !!multi);
   const next = mpNext(null);
   if (next != null) await mpPick(next);
 });

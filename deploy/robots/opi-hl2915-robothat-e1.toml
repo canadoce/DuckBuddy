@@ -5,7 +5,8 @@
 # (or run `robotd --params <this file>`).
 #
 # Not calibrated yet. Before robotd will run the robot, fill in with tools/bringup:
-#   joint_ids     - the "Joint mapping" page (each servo's ID, in JOINT_NAMES order)
+#   joint_ids     - the "Joint mapping" page (each servo's ID, in JOINT_NAMES order; 0 for a
+#                   joint with a printed dummy, hardware/cad/servo-dummy)
 #   joint_offsets - the "Zero calibration" page
 #   imu_axes      - the "Whole-robot test" page, IMU line: the sensor axis that carries
 #                   gravity with the robot upright and lying on its back

@@ -46,3 +46,7 @@ holes of the bottom head shell drilled to 3.2 mm for M3 screws.
 4646) on its front face, just under the hip servos. It drops the old plate's NP-F970 holder and the
 front mounts of the PDB/IMU board. Model, print files and assembly steps:
 [`hardware/cad/lipo-plate`](../cad/lipo-plate/README.md).
+
+**Servo dummy** (optional, not in `DuckBuddy.3mf`): a printed stand-in with the HL-2915's shape, holes
+and both horns in one solid, to hold a joint rigid at its zero pose while its servo is missing. Model,
+print files and mounting: [`hardware/cad/servo-dummy`](../cad/servo-dummy/README.md).

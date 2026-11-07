@@ -138,7 +138,9 @@ pub enum ImuSource {
 /// Everything is indexed as [`crate::model::JOINT_NAMES`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct FeetechConfig {
-    /// Bus ID of the servo driving each joint.
+    /// Bus ID of the servo driving each joint, or [`NO_SERVO`] for a joint with no servo (a
+    /// printed dummy in its place, `hardware/cad/servo-dummy`): that joint is left out of every
+    /// bus transaction and reads as its zero pose, which is where a dummy holds it.
     pub ids: [u8; NUM_JOINTS],
     /// +1 where a positive encoder step is a positive joint angle, −1 where the servo is
     /// mounted the other way round.
@@ -172,13 +174,28 @@ pub struct FeetechConfig {
     pub position_kd: u8,
 }
 
+/// The [`FeetechConfig::ids`] entry of a joint with no servo. Never a servo's own: a Feetech
+/// servo leaves the factory at ID 1, and this robot's IDs start there.
+pub const NO_SERVO: u8 = 0;
+
 impl FeetechConfig {
+    /// Joints that have a servo, in joint order.
+    pub fn present_joints(&self) -> Vec<usize> {
+        (0..NUM_JOINTS).filter(|&j| self.ids[j] != NO_SERVO).collect()
+    }
+
     /// Check a mapping before it reaches the bus. A duplicated ID would command two joints
     /// at once and make a `sync_read` unmatchable; a sign of 0 would freeze a joint at zero.
     pub fn validate(&self) -> std::result::Result<(), String> {
         let mut seen = [false; 256];
+        if self.ids.iter().all(|&id| id == NO_SERVO) {
+            return Err("no joint has a servo".to_owned());
+        }
         for (joint, &id) in self.ids.iter().enumerate() {
-            if id == 0 || id >= 0xFE {
+            if id == NO_SERVO {
+                continue;
+            }
+            if id >= 0xFE {
                 return Err(format!("joint {joint}: ID {id} is not a servo ID"));
             }
             if id == IMU_DXL_ID {
@@ -284,8 +301,8 @@ fn decode_block(block: &[u8], sign: i8, offset: i16) -> ServoSample {
 pub struct FeetechIo {
     controller: Sts3215Controller,
     config: FeetechConfig,
-    /// The servos in joint order, then the IMU when it is on the bus — the order blocks come
-    /// back in.
+    /// The servos in joint order (the joints that have one, [`Self::present`]), then the IMU
+    /// when it is on the bus — the order blocks come back in.
     ///
     /// **The IMU goes last**, the opposite of the XL330 bus. Feetech servos do not wait to hear
     /// the device ahead of them finish: each starts its reply on its own timing, so a board that
@@ -293,6 +310,10 @@ pub struct FeetechIo {
     /// (measured: 990/1000 reads clean with the IMU first, 1000/1000 with it last). The IMU
     /// firmware counts the replies ahead of it before speaking, and nothing follows it.
     ids: Vec<u8>,
+    /// Joints with a servo, in joint order; the others ([`NO_SERVO`]) are never on the bus.
+    present: Vec<usize>,
+    /// Their IDs, in the same order.
+    present_ids: Vec<u8>,
     imu: SflpDecoder,
     stale_imu: StaleImuTracker,
     /// The BNO055 and its decoder, when that is where the IMU is ([`ImuSource::Bno055`]).
@@ -331,8 +352,10 @@ impl FeetechIo {
             .with_protocol_v1()
             .with_serial_port(serial);
 
-        let mut ids = Vec::with_capacity(NUM_JOINTS + 1);
-        ids.extend_from_slice(&config.ids);
+        let present = config.present_joints();
+        let present_ids: Vec<u8> = present.iter().map(|&j| config.ids[j]).collect();
+        let mut ids = Vec::with_capacity(present_ids.len() + 1);
+        ids.extend_from_slice(&present_ids);
         let mut bno = None;
         if config.imu {
             match &config.imu_source {
@@ -356,6 +379,8 @@ impl FeetechIo {
             controller,
             config,
             ids,
+            present,
+            present_ids,
             imu,
             stale_imu: StaleImuTracker::default(),
             bno,
@@ -414,7 +439,8 @@ impl FeetechIo {
     /// limit configured here is silently gone. Returns 0: nothing is "corrected".
     pub fn check_registers(&mut self) -> Result<usize> {
         let limit = self.config.current_limit_counts();
-        for (joint, &id) in self.config.ids.clone().iter().enumerate() {
+        for joint in self.present.clone() {
+            let id = self.config.ids[joint];
             let baud = self.read_u8(id, BAUD)?;
             let mode = self.read_u8(id, MODE)?;
             let min = self.read_u16(id, MIN_ANGLE_LIMIT)?;
@@ -441,24 +467,31 @@ impl FeetechIo {
         Ok(0)
     }
 
-    /// Present positions only — used once at startup to adopt the pose the robot is in.
+    /// Present positions only — used once at startup to adopt the pose the robot is in. A
+    /// joint with no servo is at its zero pose.
     pub fn present_positions(&mut self) -> Result<[f64; NUM_JOINTS]> {
-        let blocks = self
-            .controller
-            .sync_read_raw_data(&self.config.ids, PRESENT_POSITION, 2)
-            .map_err(|e| IoError::Bus(format!("read present positions: {e}")))?;
-        if blocks.len() != NUM_JOINTS || blocks.iter().any(|b| b.len() != 2) {
-            return Err(IoError::ShortRead {
-                what: "present positions",
-                expected: NUM_JOINTS,
-                got: blocks.len(),
-            });
-        }
+        let blocks = self.present_position_blocks()?;
         let mut out = [0.0; NUM_JOINTS];
-        for (j, block) in blocks.iter().enumerate() {
+        for (&j, block) in self.present.iter().zip(&blocks) {
             out[j] = counts_to_rad(le16(block, 0), self.config.signs[j], self.config.offsets[j]);
         }
         Ok(out)
+    }
+
+    /// The present-position register of every servo, in [`Self::present`] order.
+    fn present_position_blocks(&mut self) -> Result<Vec<Vec<u8>>> {
+        let blocks = self
+            .controller
+            .sync_read_raw_data(&self.present_ids, PRESENT_POSITION, 2)
+            .map_err(|e| IoError::Bus(format!("read present positions: {e}")))?;
+        if blocks.len() != self.present_ids.len() || blocks.iter().any(|b| b.len() != 2) {
+            return Err(IoError::ShortRead {
+                what: "present positions",
+                expected: self.present_ids.len(),
+                got: blocks.len(),
+            });
+        }
+        Ok(blocks)
     }
 
     /// Torque on or off, every servo. One transaction per joint: not for the tick.
@@ -467,9 +500,10 @@ impl FeetechIo {
     /// last goal across torque-off — whatever the previous process, or a test script, left
     /// there — and enabling torque drives straight to it, at full speed and full current.
     /// On a limp robot that goal is typically far from the pose it has slumped into.
-    /// IDs and joint indices of the servos that are driven — all but [`FeetechConfig::limp`].
+    /// IDs and joint indices of the servos that are driven — all but [`FeetechConfig::limp`]
+    /// and the joints with no servo.
     fn driven(&self) -> (Vec<u8>, Vec<usize>) {
-        let joints: Vec<usize> = (0..NUM_JOINTS).filter(|&j| !self.limp[j]).collect();
+        let joints: Vec<usize> = self.present.iter().copied().filter(|&j| !self.limp[j]).collect();
         (joints.iter().map(|&j| self.config.ids[j]).collect(), joints)
     }
 
@@ -483,7 +517,7 @@ impl FeetechIo {
             if want == self.limp[joint] {
                 continue;
             }
-            if self.torque_on {
+            if self.torque_on && self.config.ids[joint] != NO_SERVO {
                 let id = self.config.ids[joint];
                 if want {
                     self.write(id, TORQUE_ENABLE, vec![0])?;
@@ -505,19 +539,16 @@ impl FeetechIo {
             self.torque_on = false;
         }
         if on {
-            let blocks = self
-                .controller
-                .sync_read_raw_data(&self.config.ids, PRESENT_POSITION, 2)
-                .map_err(|e| IoError::Bus(format!("read present positions: {e}")))?;
-            if blocks.len() != NUM_JOINTS || blocks.iter().any(|b| b.len() != 2) {
-                return Err(IoError::ShortRead {
-                    what: "present positions",
-                    expected: NUM_JOINTS,
-                    got: blocks.len(),
-                });
+            let read = self.present_position_blocks()?;
+            let mut by_joint: [Option<&Vec<u8>>; NUM_JOINTS] = [None; NUM_JOINTS];
+            for (&j, block) in self.present.iter().zip(&read) {
+                by_joint[j] = Some(block);
             }
             let (ids, joints) = self.driven();
-            let blocks: Vec<Vec<u8>> = joints.iter().map(|&j| blocks[j].clone()).collect();
+            let blocks: Vec<Vec<u8>> = joints
+                .iter()
+                .map(|&j| by_joint[j].expect("a driven joint has a servo").clone())
+                .collect();
             // Every joint limp (a rest with the head down too) leaves nothing to write, and a
             // sync_write to no servos divides by zero inside rustypot — 2026-10-13, it took the
             // control thread down.
@@ -527,7 +558,8 @@ impl FeetechIo {
                     .map_err(|e| IoError::Bus(format!("sync_write hold positions: {e}")))?;
             }
         }
-        for (joint, &id) in self.config.ids.clone().iter().enumerate() {
+        for joint in self.present.clone() {
+            let id = self.config.ids[joint];
             // Off goes to every servo, limp ones included, in case one was left holding.
             if on && self.limp[joint] {
                 continue;
@@ -614,8 +646,9 @@ impl RobotIo for FeetechIo {
             }
             sensors.imu = decoder.decode(&sample);
         }
+        let servos = self.present.len();
         let servo_blocks = if self.config.imu && self.bno.is_none() {
-            let block = &blocks[NUM_JOINTS];
+            let block = &blocks[servos];
             if block.len() < IMU_BLOCK_LEN {
                 return Err(IoError::ShortRead {
                     what: "imu block",
@@ -636,16 +669,18 @@ impl RobotIo for FeetechIo {
                 );
             }
             sensors.imu = self.imu.decode(&raw);
-            &blocks[..NUM_JOINTS]
+            &blocks[..servos]
         } else {
             &blocks[..]
         };
 
         let mut volts = 0.0;
         let mut counted = 0;
+        // A joint with no servo reads as its zero pose, still, cold and without faults: the
+        // Sensors default.
         let mut temps_c = [0.0; NUM_JOINTS];
         let mut statuses = [0u8; NUM_JOINTS];
-        for (joint, block) in servo_blocks.iter().enumerate() {
+        for (&joint, block) in self.present.iter().zip(servo_blocks) {
             if block.len() != READ_LEN as usize {
                 return Err(IoError::ShortRead {
                     what: "motor block",
@@ -715,7 +750,8 @@ impl RobotIo for FeetechIo {
     /// Scale the servos' live Kp (register 50) to an XL330-scale gain. RAM: a power cycle
     /// restores the servo's own EEPROM value, which bring-up then overwrites again.
     fn set_gain(&mut self, kp: u16) -> Result<()> {
-        for (joint, &id) in self.config.ids.clone().iter().enumerate() {
+        for joint in self.present.clone() {
+            let id = self.config.ids[joint];
             let p = kp_for_gain(kp, self.config.position_kp[joint]);
             self.write(id, KP, vec![p])?;
         }
@@ -730,11 +766,11 @@ impl RobotIo for FeetechIo {
         }
         let blocks = self
             .controller
-            .sync_read_raw_data(&self.config.ids, PRESENT_VOLTAGE, 2)
+            .sync_read_raw_data(&self.present_ids, PRESENT_VOLTAGE, 2)
             .map_err(|e| IoError::Bus(format!("voltage+temperature sync_read: {e}")))?;
         let mut temps_c = [0.0; NUM_JOINTS];
         let mut volts = Vec::with_capacity(NUM_JOINTS);
-        for (joint, block) in blocks.iter().enumerate().take(NUM_JOINTS) {
+        for (&joint, block) in self.present.iter().zip(&blocks) {
             if block.len() != 2 {
                 return Err(IoError::ShortRead {
                     what: "voltage+temperature block",
@@ -804,6 +840,22 @@ mod tests {
     }
 
     /// Two joints on one ID would be commanded together and make every `sync_read` ambiguous.
+    #[test]
+    fn a_joint_with_no_servo_is_allowed_and_left_out() {
+        let mut c = config();
+        c.ids[0] = NO_SERVO;
+        c.ids[1] = NO_SERVO;
+        assert_eq!(c.validate(), Ok(()));
+        assert_eq!(c.present_joints(), (2..NUM_JOINTS).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_robot_with_no_servo_at_all_is_refused() {
+        let mut c = config();
+        c.ids = [NO_SERVO; NUM_JOINTS];
+        assert!(c.validate().is_err());
+    }
+
     #[test]
     fn duplicate_ids_are_refused() {
         let mut c = config();
