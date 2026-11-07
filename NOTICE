@@ -27,5 +27,6 @@ duck-detect/models/
 Documentation (docs/, *.md) is licensed under the Creative Commons Attribution 4.0 International
 License (CC-BY-4.0) unless a file says otherwise.
 
-Models fetched at install time (not in this repository) keep their own licences: SenseVoice and the
-GTCRN denoiser through sherpa-onnx, and any language model used by tools/duckbrain.
+Models fetched at install time (not in this repository) keep their own licences: Moonshine (MIT), the
+silero VAD, the DPDFNet and GTCRN denoisers and NVIDIA TitaNet-small through sherpa-onnx, and any
+language model used by tools/duckbrain.

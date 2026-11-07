@@ -1,5 +1,5 @@
 [Unit]
-Description=voiced (brain): the duck's ears - VAD + SenseVoice offline on the HAT mic, its name and words to lifed
+Description=voiced (brain): the duck's ears - VAD + Moonshine offline on the HAT mic, who spoke, its name and words to lifed
 After=lifed-dev.service
 BindsTo=lifed-dev.service
 

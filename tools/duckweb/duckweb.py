@@ -290,7 +290,7 @@ async function refresh() {
   if (key !== lastKey) {
     lastKey = key;
     const html = d.slice().reverse().map(x => x.who === "you"
-      ? `<div class="msg you"><div class="bubble"><div class="meaning">${esc(x.text)}</div><div class="meta">${hhmm(x.t)}${x.command ? " · command" : ""}${esc(jevNote(x.jev))}</div></div></div>`
+      ? `<div class="msg you"><div class="bubble"><div class="meaning">${esc(x.text)}</div><div class="meta">${x.speaker ? esc(x.speaker) + " · " : ""}${hhmm(x.t)}${x.command ? " · command" : ""}${esc(jevNote(x.jev))}</div></div></div>`
       : `<div class="msg duck"><div class="bubble"><div class="meaning">${EMO[x.emotion] || ""} ${esc(x.meaning || x.text)}</div>
            ${x.photo ? `<img class="look" src="/api/look/${encodeURIComponent(x.photo)}.jpg" alt="What it saw" onerror="this.remove()">` : ""}
            <div class="say">Duck-speak: ${esc(x.text)}</div><div class="meta">${hhmm(x.t)} · ${VIA[x.via] || ""}</div></div></div>`).join("");

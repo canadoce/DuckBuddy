@@ -65,17 +65,42 @@ class NameTest(unittest.TestCase):
 
 
 class RecognizerTest(unittest.TestCase):
-    def test_sensevoice_is_asked_for_english(self):
+    def test_moonshine_v2_english(self):
         seen = {}
 
         class Rec:
             @staticmethod
-            def from_sense_voice(**kw):
+            def from_moonshine_v2(**kw):
                 seen.update(kw)
                 return "rec"
         hearing.sherpa_onnx.OfflineRecognizer = Rec
         self.assertEqual(hearing.make_recognizer("/models"), "rec")
-        self.assertEqual((seen["language"], seen["use_itn"]), ("en", True))
+        self.assertEqual(seen["encoder"], "/models/moonshine/encoder_model.ort")
+        self.assertEqual(seen["decoder"], "/models/moonshine/decoder_model_merged.ort")
+
+
+class SpeakerTest(unittest.TestCase):
+    def setUp(self):
+        self.sent = []
+        self.real = hearing.to_lifed
+        hearing.to_lifed = self.sent.append
+
+    def tearDown(self):
+        hearing.to_lifed = self.real
+
+    def test_the_speaker_goes_with_what_was_said(self):
+        hearing.Ears(None).heard("Biscuit, sit down.", None, {"speaker": "Rafael", "score": 0.81, "met": None})
+        self.assertEqual([(e["type"], e["speaker"], e["speaker_score"]) for e in self.sent],
+                         [("call", "Rafael", 0.81), ("say", "Rafael", 0.81)])
+        self.assertNotIn("met", self.sent[1])
+
+    def test_meeting_someone_is_marked(self):
+        hearing.Ears(None).heard("Biscuit, my name is Rafael.", None, {"speaker": "Rafael", "score": 1.0, "met": "Rafael"})
+        self.assertEqual(self.sent[-1]["met"], "Rafael")
+
+    def test_without_voice_prints_nobody_is_named(self):
+        hearing.Ears(None).heard("What is this?")
+        self.assertIsNone(self.sent[0]["speaker"])
 
 
 if __name__ == "__main__":

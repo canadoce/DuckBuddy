@@ -15,14 +15,17 @@
 #
 # What goes where on the brain (the login user's home):
 #   ~/robot      robotd, tofd, robotctl, sounds, the robot configs, robotd.env, onnxruntime, recs/ (logs)
-#   ~/lifed ~/voiced ~/visiond ~/duckweb ~/persona   the Python services (tools/), ~/lifed/voice the clips
-#   ~/models/asr-sensevoice                          SenseVoice-Small int8, silero VAD, gtcrn denoiser
+#   ~/lifed ~/voiced ~/visiond ~/duckweb ~/duckbrain ~/persona   the Python services (tools/), ~/lifed/voice the clips
+#   ~/.config/duckbrain                              duckbrain.env (the chat LLM) and jev.env (the Jev), written by you
+#   ~/models/hearing                                 Moonshine v2 base (English), silero VAD, DPDFNet and
+#                                                    GTCRN denoisers, TitaNet-small voice prints
 #   ~/.config/systemd/user                           the user units (deploy/brain/units)
 #   /var/lib/robot/sounds                            robotd's sound bank (sounds ensure-bank)
 #
 # robotd runs with ROBOTD_ARGS="--fake --no-policy" from ~/robot/robotd.env until the legs are
 # built and calibrated: no servo bus, nothing moves; the voice, the sounds, the camera, the ToF and
 # the phone page all work. Edit robotd.env on the brain to change it (deploy never overwrites it).
+# ~/robot/lifed.env holds lifed's extra arguments (LIFED_ARGS), likewise never overwritten.
 set -euo pipefail
 
 usage() { sed -n '2,27p' "$0"; exit "${1:-0}"; }
@@ -83,7 +86,7 @@ fi
 
 # ---- copy ----------------------------------------------------------------------
 say "copying to $HOST"
-"${SSH[@]}" "$HOST" 'mkdir -p ~/robot/recs ~/lifed ~/voiced ~/visiond ~/duckweb ~/persona ~/.config/systemd/user ~/duckbuddy-brain'
+"${SSH[@]}" "$HOST" 'mkdir -p ~/robot/recs ~/lifed ~/voiced ~/visiond ~/duckweb ~/duckbrain ~/persona ~/.config/systemd/user ~/.config/duckbrain ~/duckbuddy-brain'
 
 if [ "$INSTALL" -eq 1 ]; then
 	"${RSYNC[@]}" "$REPO/deploy/brain/install.sh" "$REPO/deploy/brain/overlay" "$REPO/deploy/brain/rootfs" "$HOST:duckbuddy-brain/"
@@ -93,7 +96,7 @@ fi
 
 rsync -tz -e "${SSH[*]}" "$BIN/robotd" "$BIN/tofd" "$BIN/robotctl" "$BIN/sounds" "$HOST:robot/"
 rsync -tz -e "${SSH[*]}" "$REPO"/deploy/robots/*.toml "$HOST:robot/"
-for t in lifed voiced visiond duckweb persona; do
+for t in lifed voiced visiond duckweb duckbrain persona; do
 	"${RSYNC[@]}" "${TOOL_EXCLUDES[@]}" --exclude 'voice/' --exclude 'state.json' --exclude 'duckcam' \
 		"$REPO/tools/$t/" "$HOST:$t/"
 done
@@ -118,6 +121,14 @@ ROBOTD_ARGS="--fake --no-policy"
 EOF
 fi
 grep '^ROBOTD_ARGS' robotd.env
+if [ ! -e lifed.env ]; then
+	cat > lifed.env <<'EOF'
+# Extra lifed arguments (deploy/brain/units/lifed-dev.service), e.g. --jev-timeout 2.5 for a Jev
+# slower than TypeSafe's (a System One server of your own).
+LIFED_ARGS=""
+EOF
+fi
+grep '^LIFED_ARGS' lifed.env
 
 ORT=onnxruntime-linux-aarch64-1.28.3
 if [ ! -e "$ORT/lib/libonnxruntime.so" ]; then
@@ -135,37 +146,50 @@ gcc -O2 -Wall -o ~/visiond/duckcam.new ~/visiond/duckcam.c -lAWIspApi -lisp -lis
 mv -f ~/visiond/duckcam.new ~/visiond/duckcam
 
 say "voiced's Python (sherpa-onnx)"
-if ! ~/voiced/.venv/bin/python -c 'import sherpa_onnx, numpy' 2>/dev/null; then
-	python3 -m venv --system-site-packages ~/voiced/.venv
+# 2.0.1 or later: Moonshine v2 and the DPDFNet denoiser
+SHERPA=2.0.1
+[ -x ~/voiced/.venv/bin/python ] || python3 -m venv --system-site-packages ~/voiced/.venv
+if ! ~/voiced/.venv/bin/python -c "
+import sherpa_onnx, numpy
+v = tuple(int(x) for x in sherpa_onnx.__version__.split('.')[:3])
+raise SystemExit(v < tuple(int(x) for x in '$SHERPA'.split('.')))" 2>/dev/null; then
 	~/voiced/.venv/bin/pip install --quiet --upgrade pip
-	~/voiced/.venv/bin/pip install --quiet sherpa-onnx
+	~/voiced/.venv/bin/pip install --quiet --upgrade "sherpa-onnx>=$SHERPA"
 fi
 ~/voiced/.venv/bin/python -c 'import sherpa_onnx; print("sherpa-onnx", sherpa_onnx.__version__)'
 python3 -c 'import cv2, numpy; print("opencv", cv2.__version__, "numpy", numpy.__version__)' \
 	|| die "python3-opencv / python3-numpy missing: run deploy.sh with --install"
+python3 -c 'import fastapi, uvicorn, soundfile; print("fastapi", fastapi.__version__, "(duckbrain)")' \
+	|| die "python3-fastapi / python3-uvicorn / python3-soundfile missing: run deploy.sh with --install"
 
-M=~/models/asr-sensevoice
+# voiced's models (tools/voiced/hearing.py): all English, the most recent sherpa-onnx builds
+M=~/models/hearing
 REL=https://github.com/k2-fsa/sherpa-onnx/releases/download
-mkdir -p "$M"
-if [ ! -f "$M/model.int8.onnx" ] || [ ! -f "$M/tokens.txt" ]; then
-	say "SenseVoice-Small int8 (about 160 MB)"
+MOON=sherpa-onnx-moonshine-base-en-quantized-2026-02-27
+mkdir -p "$M/moonshine"
+if [ ! -f "$M/moonshine/.$MOON" ]; then
+	say "Moonshine v2 base, English (about 110 MB)"
 	tmp="$(mktemp -d)"
-	curl -fL --retry 3 "$REL/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2" | tar -xj -C "$tmp"
-	mv "$tmp"/sherpa-onnx-sense-voice-*/model.int8.onnx "$tmp"/sherpa-onnx-sense-voice-*/tokens.txt "$M/"
+	curl -fL --retry 3 "$REL/asr-models/$MOON.tar.bz2" | tar -xj -C "$tmp"
+	mv -f "$tmp/$MOON"/encoder_model.ort "$tmp/$MOON"/decoder_model_merged.ort "$tmp/$MOON"/tokens.txt "$M/moonshine/"
 	rm -rf "$tmp"
+	touch "$M/moonshine/.$MOON"
 fi
 [ -f "$M/silero_vad.onnx" ] || curl -fL --retry 3 -o "$M/silero_vad.onnx" "$REL/asr-models/silero_vad.onnx"
+[ -f "$M/dpdfnet_baseline.onnx" ] || curl -fL --retry 3 -o "$M/dpdfnet_baseline.onnx" "$REL/speech-enhancement-models/dpdfnet_baseline.onnx"
 [ -f "$M/gtcrn_simple.onnx" ] || curl -fL --retry 3 -o "$M/gtcrn_simple.onnx" "$REL/speech-enhancement-models/gtcrn_simple.onnx"
-ls -l "$M"
+[ -f "$M/nemo_en_titanet_small.onnx" ] || curl -fL --retry 3 -o "$M/nemo_en_titanet_small.onnx" \
+	"$REL/speaker-recongition-models/nemo_en_titanet_small.onnx"
+ls -l "$M" "$M/moonshine"
 
 say "services"
 [ "$(loginctl show-user "$(id -un)" -p Linger --value)" = yes ] \
 	|| echo "note: lingering is off, the services start only while you are logged in (install.sh turns it on)"
-UNITS="robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev"
+UNITS="robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev duckjev-dev duckbrain-dev"
 systemctl --user daemon-reload
 systemctl --user enable $UNITS 2>&1 | grep -v '^Created symlink' || true
 if [ "$START" = 1 ]; then
-	systemctl --user restart robotd-dev tofd-dev visiond-dev duckweb-dev
+	systemctl --user restart duckjev-dev duckbrain-dev robotd-dev tofd-dev visiond-dev duckweb-dev
 	systemctl --user restart lifed-dev voiced-dev
 	sleep 5
 	for u in $UNITS; do printf '%-14s %s\n' "$u" "$(systemctl --user is-active "$u" || true)"; done
