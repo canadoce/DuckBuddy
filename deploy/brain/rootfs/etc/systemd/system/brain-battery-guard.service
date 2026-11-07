@@ -1,0 +1,12 @@
+[Unit]
+Description=Brain: low-battery guard on the HAT's INA226 (3S: warn 10.5 V, power off 9.9 V)
+After=systemd-udevd.service
+
+[Service]
+EnvironmentFile=-/etc/default/brain-battery-guard
+ExecStart=/usr/bin/python3 /opt/brain/battery_guard.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

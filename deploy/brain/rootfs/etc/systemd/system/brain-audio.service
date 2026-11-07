@@ -1,0 +1,13 @@
+[Unit]
+Description=Brain: TLV320AIC3104 mixer levels and mic routing (card aic3104)
+After=systemd-modules-load.service sound.target alsa-restore.service
+Wants=sound.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/brain-audio
+ExecStart=/usr/local/bin/brain-audio-init
+
+[Install]
+WantedBy=multi-user.target

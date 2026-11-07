@@ -1,5 +1,5 @@
 [Unit]
-Description=lifed (dev): the duck's life layer - homeostasis, drives, affect, life state machine
+Description=lifed (brain): the duck's life layer - homeostasis, drives, affect, life state machine
 # Only asks robotd; it never powers motors. Follows robotd up and down.
 BindsTo=robotd-dev.service
 After=robotd-dev.service padd-dev.service

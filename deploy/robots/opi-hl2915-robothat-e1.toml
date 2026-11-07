@@ -13,8 +13,8 @@
 # hold the servos the same way. Check them on the "Joint mapping" page all the same.
 
 [bus]
-# UART0, header pins 8/10. The installer (deploy/audio/install-aic3104-a733.sh --hat robothat-e1)
-# moves the serial console off it.
+# UART0, header pins 8/10. The brain installer (deploy/brain/install.sh) moves the serial
+# console off it.
 port = "/dev/ttyS0"
 servo = "feetech_hls"
 #             L-yaw roll pitch knee ankle neck head  yaw  roll mouth R-yaw roll pitch knee ankle
@@ -47,3 +47,13 @@ walk_max_c = 70.0
 # the SMBJ15A for 3S (https://code.caric.io/Robotics/elec_RPI_Robot_HAT/src/branch/main/docs/12V_battery_swap.md).
 cells = [3]
 max_volts = 14.0
+
+[audio]
+# The brain's codec (card "aic3104") through the shared dmix / dsnoop devices of
+# /etc/asound.conf (deploy/brain): voiced keeps the capture open and lifed plays clips on the
+# same stream, so robotd must not open the hardware directly.
+device = "duck_out"
+
+[theremin]
+# tofd's depth stream, as the brain's tofd unit serves it (deploy/brain/units/tofd-dev.service).
+socket = "/tmp/tofd.sock"

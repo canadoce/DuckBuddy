@@ -1,0 +1,186 @@
+/*
+ * The brain: Orange Pi Zero 3W (Allwinner A733, sun60iw2) with the Robot HAT E1
+ * (https://code.caric.io/Robotics/elec_RPI_Robot_HAT) in the DuckBuddy's head.
+ *
+ * Header wiring of the Robot HAT E1:
+ *   TWI0:  PB3 SDA pin 3, PB2 SCL pin 5   codec 0x18, INA226 0x45, LSM6DSV16X 0x6A,
+ *                                          Qwiic J5 (body IMU, BNO055 0x28)
+ *   TWI2:  PE2 SDA pin 19, PE1 SCL pin 23 Qwiic J8 (head ToF, VL53L5CX 0x29)
+ *   I2S0:  PB5 BCLK pin 12, PB6 LRCK pin 35, PB7 DOUT pin 40, PB8 DIN pin 38
+ *   UART0: PB9 TX pin 8, PB10 RX pin 10   servo bus (TX sets the bus direction on the HAT)
+ *
+ * Board notes:
+ *   - The codec has its own 12 MHz oscillator. PB4 (pin 7) goes to the HAT's
+ *     Qwiic J6, so it is not muxed as I2S0 MCLK. The machine driver still tells
+ *     the codec its MCLK (mclk-fs = 1, mclk-fp = 12 MHz), so the codec PLL is set
+ *     from 12 MHz.
+ *   - The codec reset is an RC on the HAT: no reset GPIO. The PAM8406 amp is
+ *     always on: no amp GPIO.
+ *   - The sound card is its own node ("aic3104"). The stock i2s0_mach node is
+ *     made for an AC101 codec and has pin switches for AC101 widgets, so it stays
+ *     disabled.
+ *   - UART0 pin groups are empty in the base DTB (U-Boot muxes the console), so
+ *     this overlay gives Linux the pins. The apb-uart clock (shared by all UARTs)
+ *     moves from 24 MHz to pll-peri0-480m / 5 = 96 MHz, so both 1 Mbit/s (factory
+ *     servos, 96M/16/6) and 500 kbit/s (robotd, 96M/16/12) are exact; the
+ *     Bluetooth UART1 at 1.5M is 96M/16/4. The sunxi UART driver logs "baud
+ *     500000 beyond rance": only a log line, the rate is still set. Clock IDs from
+ *     sun60iw2-ccu.h: CLK_APB_UART 46, CLK_PLL_PERI0_480M 5.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "allwinner,sun60iw2";
+
+	fragment@0 {
+		target-path = "/";
+
+		__overlay__ {
+			brain_codec_3v3: brain-codec-3v3 {
+				compatible = "regulator-fixed";
+				regulator-name = "brain-codec-3v3";
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+			};
+
+			brain_codec_1v8: brain-codec-1v8 {
+				compatible = "regulator-fixed";
+				regulator-name = "brain-codec-1v8";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-always-on;
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <&twi0>;
+
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+			twi_drv_used = <1>;
+			/* 400 kHz: the BNO055's maximum; robotd reads it 200 times a second. */
+			clock-frequency = <400000>;
+
+			aic3104: codec@18 {
+				compatible = "ti,tlv320aic3104";
+				reg = <0x18>;
+				#sound-dai-cells = <0>;
+				/* MICBIAS stays off: the MEMS mic runs from 3V3. */
+				IOVDD-supply = <&brain_codec_3v3>;
+				DVDD-supply = <&brain_codec_1v8>;
+				AVDD-supply = <&brain_codec_3v3>;
+				DRVDD-supply = <&brain_codec_3v3>;
+				status = "okay";
+			};
+		};
+	};
+
+	/* Qwiic J8: the head ToF (/dev/i2c-2). */
+	fragment@2 {
+		target = <&twi2>;
+
+		__overlay__ {
+			status = "okay";
+			twi_drv_used = <1>;
+		};
+	};
+
+	fragment@3 {
+		target = <&i2s0_plat>;
+
+		__overlay__ {
+			/*
+			 * No i2s0_pins_a (PB4 MCLK). "sleep" is the same pin set: the sunxi
+			 * driver selects "sleep" when either stream closes, even while the
+			 * other still runs, and the stock sleep state stops BCLK/LRCK to the
+			 * codec (an open capture then reads zeros) and takes PB4.
+			 */
+			pinctrl-0 = <&i2s0_pins_b &i2s0_pins_c &i2s0_pins_d &i2s0_pins_e>;
+			pinctrl-1 = <&i2s0_pins_b &i2s0_pins_c &i2s0_pins_d &i2s0_pins_e>;
+			status = "okay";
+		};
+	};
+
+	fragment@4 {
+		target = <&i2s0_mach>;
+
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@5 {
+		target-path = "/soc@3000000";
+
+		__overlay__ {
+			brain_sound: brain_sound {
+				compatible = "allwinner,sunxi-snd-mach";
+				soundcard-mach,name = "aic3104";
+				soundcard-mach,format = "i2s";
+				soundcard-mach,frame-master = <&brain_sound_cpu>;
+				soundcard-mach,bitclock-master = <&brain_sound_cpu>;
+				soundcard-mach,slot-num = <2>;
+				soundcard-mach,slot-width = <32>;
+				soundcard-mach,jack-support = <0>;
+				soundcard-mach,widgets =
+					"Speaker", "Speaker",
+					"Microphone", "Onboard Mic";
+				/*
+				 * The speaker (J1) is on the amp's right input, fed by
+				 * RIGHT_LOP; LEFT_LOP goes to test points only. The onboard
+				 * MEMS mic is on MIC2R; MIC2L is tied to ground.
+				 */
+				soundcard-mach,routing =
+					"Speaker", "LLOUT",
+					"Speaker", "RLOUT",
+					"MIC2R", "Onboard Mic";
+				status = "okay";
+
+				brain_sound_cpu: soundcard-mach,cpu {
+					sound-dai = <&i2s0_plat>;
+					soundcard-mach,pll-fs = <1>;
+					/* The codec's MCLK: the 12 MHz oscillator on the HAT. */
+					soundcard-mach,mclk-fs = <1>;
+					soundcard-mach,mclk-fp = <12000000 12000000>;
+				};
+
+				soundcard-mach,codec {
+					sound-dai = <&aic3104>;
+				};
+			};
+		};
+	};
+
+	fragment@6 {
+		target = <&uart0>;
+
+		__overlay__ {
+			assigned-clocks = <&ccu 46>;
+			assigned-clock-parents = <&ccu 5>;
+			assigned-clock-rates = <96000000>;
+		};
+	};
+
+	fragment@7 {
+		target = <&uart0_pins_active>;
+
+		__overlay__ {
+			pins = "PB9", "PB10";
+			function = "uart0";
+		};
+	};
+
+	fragment@8 {
+		target = <&uart0_pins_sleep>;
+
+		__overlay__ {
+			pins = "PB9", "PB10";
+			function = "gpio_in";
+		};
+	};
+};

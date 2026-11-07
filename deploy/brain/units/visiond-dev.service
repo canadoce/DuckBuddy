@@ -1,5 +1,5 @@
 [Unit]
-Description=visiond (dev): Xiaobai's eyes - the head camera on demand (QR Wi-Fi provisioning first)
+Description=visiond (brain): the duck's eyes - the head camera (duckcam), faces, QR Wi-Fi provisioning
 After=lifed-dev.service
 
 [Service]

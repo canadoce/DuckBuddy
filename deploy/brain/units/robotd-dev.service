@@ -1,0 +1,25 @@
+# User unit on the brain: robotd from ~/robot, its config through the ~/robot/active.toml symlink.
+# `systemctl --user` needs no sudo; boot start needs lingering once (deploy.sh does it):
+#   sudo loginctl enable-linger $USER
+# Extra arguments come from ~/robot/robotd.env (ROBOTD_ARGS). While the legs are not built it
+# holds ROBOTD_ARGS="--fake --no-policy": no servo bus, nothing moves, but the voice, the sound
+# bank and the IPC API all work. Empty it once joint_ids and joint_offsets are calibrated.
+# Torque stays off at start (robotd never powers the joints on its own). Not restarted on a crash:
+# a restart turns torque off first, which drops a standing robot - better a frozen robot and a
+# person who notices than an automatic collapse.
+[Unit]
+Description=robotd (brain, ~/robot/active.toml)
+After=sound.target
+
+[Service]
+WorkingDirectory=%h/robot
+Environment=ORT_DYLIB_PATH=%h/robot/onnxruntime-linux-aarch64-1.28.3/lib/libonnxruntime.so
+Environment=ROBOTD_ARGS=
+EnvironmentFile=-%h/robot/robotd.env
+ExecStart=%h/robot/robotd --params %h/robot/active.toml --socket /tmp/robotd.sock $ROBOTD_ARGS
+StandardOutput=append:%h/robot/recs/robotd-service.log
+StandardError=append:%h/robot/recs/robotd-service.log
+Restart=no
+
+[Install]
+WantedBy=default.target

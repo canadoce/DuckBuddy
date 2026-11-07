@@ -21,7 +21,11 @@
  * after the luma plane's 16-aligned height (1088) and its last rows are not written (memory:
  * opi-zero3w-camera) — crop the bottom 16 rows after conversion.
  *
- * Needs the vin modules loaded (/etc/modules-load.d/camera.conf) and the video group. Never run
+ * Camera tuning: /opt/brain/camera/imx219_tuning.bin (or DUCKCAM_TUNING=path, DUCKCAM_TUNING= for
+ * libisp's built-in defaults) replaces the IMX219 ISP settings before the ISP starts, the same file
+ * camgrab loads (deploy/brain/rootfs/opt/brain/camera).
+ *
+ * Needs the vin modules loaded (/etc/modules-load.d/brain-camera.conf) and the video group. Never run
  * `v4l2-ctl --list-ctrls-menus` on this device: it hangs the board.
  */
 #include <errno.h>
@@ -41,6 +45,15 @@
 #include <dirent.h>
 
 #define NBUF 4
+
+/* IMX219 tuning blocks exported by libisp_ini.so. libisp copies them when the ISP starts, so a
+ * tuning file can replace them first (load_tuning). */
+extern unsigned char imx219_mipi_isp_test_settings[124];
+extern unsigned char imx219_mipi_isp_3a_settings[2724];
+extern unsigned char imx219_mipi_isp_tuning_settings[99440];
+extern unsigned char imx219_mipi_isp_iso_settings[13996];
+#define TUNING_FILE_DEFAULT "/opt/brain/camera/imx219_tuning.bin"
+#define TUNING_HEADER 74          /* u32 size, 20 B name, 50 B note (isp_param_config.bin layout) */
 #define WIDTH 1920
 #define HEIGHT 1080
 
@@ -65,6 +78,33 @@ static int write_all(const void *p, size_t n) {
         b += w; n -= (size_t)w;
     }
     return 0;
+}
+
+/* Load the camera tuning file over libisp's built-in IMX219 defaults. Path from DUCKCAM_TUNING
+ * (empty = keep the defaults), else the default file if it exists. */
+static void load_tuning(void) {
+    const char *path = getenv("DUCKCAM_TUNING");
+    if (!path) path = TUNING_FILE_DEFAULT;
+    if (!*path) return;
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        if (getenv("DUCKCAM_TUNING")) fprintf(stderr, "duckcam: tuning %s: %s\n", path, strerror(errno));
+        return;
+    }
+    static unsigned char buf[TUNING_HEADER + 124 + 2724 + 99440 + 13996 + 1];
+    size_t n = fread(buf, 1, sizeof buf, f);
+    fclose(f);
+    unsigned int size = buf[0] | buf[1] << 8 | buf[2] << 16 | (unsigned)buf[3] << 24;
+    if (n != sizeof buf - 1 || size != sizeof buf - 1 - TUNING_HEADER) {
+        fprintf(stderr, "duckcam: tuning %s has the wrong size, ignored\n", path);
+        return;
+    }
+    unsigned char *p = buf + TUNING_HEADER;
+    memcpy(imx219_mipi_isp_test_settings, p, 124); p += 124;
+    memcpy(imx219_mipi_isp_3a_settings, p, 2724); p += 2724;
+    memcpy(imx219_mipi_isp_tuning_settings, p, 99440); p += 99440;
+    memcpy(imx219_mipi_isp_iso_settings, p, 13996);
+    fprintf(stderr, "duckcam: tuning %s loaded\n", path);
 }
 
 /* The VIN capture node: the lowest /dev/videoN whose name is vin_video*. Returns N. */
@@ -174,6 +214,7 @@ int main(int argc, char **argv) {
     AWIspApi *isp = NULL;
     int isp_id = -1;
     if (use_isp) {
+        load_tuning();
         isp = CreateAWIspApi();
         if (isp && isp->ispApiInit() >= 0 && (isp_id = isp->ispGetIspId(video)) >= 0 && isp->ispStart(isp_id) >= 0) {
             fprintf(stderr, "duckcam: ISP started (id %d)\n", isp_id);

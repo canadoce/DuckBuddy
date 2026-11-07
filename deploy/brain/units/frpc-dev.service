@@ -1,5 +1,5 @@
 [Unit]
-Description=frpc (dev): Xiaobai's brain on 127.0.0.1:8210, an stcp visitor through the Aliyun frps
+Description=frpc (brain): the duckbrain voice server on 127.0.0.1:8210, an stcp visitor through frps
 After=network-online.target
 Wants=network-online.target
 

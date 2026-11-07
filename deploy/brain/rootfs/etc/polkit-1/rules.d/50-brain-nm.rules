@@ -1,0 +1,7 @@
+// The brain's robot user (group netdev) may control NetworkManager without a
+// password: visiond joins the Wi-Fi network from a QR code the duck is shown.
+polkit.addRule(function (action, subject) {
+	if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 && subject.isInGroup("netdev")) {
+		return polkit.Result.YES;
+	}
+});

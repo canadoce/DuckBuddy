@@ -440,12 +440,12 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
       <tr><td>Multi-turn reading</td><td>Power-cycle the servos</td></tr>
       <tr><td rowspan="2">IMU</td><td>200 does not answer</td><td>Firmware not flashed yet (go to the "IMU firmware" tab); the cable from the PDB to the HAT</td></tr>
       <tr><td>High noise or bias</td><td>Was it moved during the test; high-frequency gyro jitter means the IMU mount is vibrating, check the mounting</td></tr>
-      <tr><td rowspan="3">Microphone</td><td>Both channels all 0</td><td>i2c-2 is held down (the codec cannot be written): most likely the ToF module is shorted or plugged in wrong; unplug the ToF and reboot to try; <code>systemctl status aic3104-a733</code></td></tr>
+      <tr><td rowspan="3">Microphone</td><td>Both channels all 0</td><td>The codec is not set up: <code>aplay -l</code> must list card <code>aic3104</code> (the brain overlay and the codec driver, deploy/brain); i2c-0 held down (the codec cannot be written): most likely the BNO055 on J5 is shorted or plugged in wrong; unplug it and reboot to try; <code>systemctl status brain-audio</code></td></tr>
       <tr><td>Very large DC offset</td><td>Soldering of that microphone channel on the HAT (on 10-25 a new HAT had an offset of −11000)</td></tr>
       <tr><td>No sound heard</td><td>Clap or talk while it records; the microphone cable</td></tr>
       <tr><td rowspan="2">Speaker</td><td>Microphone works, but no 1 kHz recorded and nothing heard by ear</td><td>Bad solder joint on pin 4 DIN of codec U6 on the HAT (remove the board; in diode mode measure pins 7/12/35/38/40 of J1; the readings should match, about 0.5–0.8 V; if pin 40 reads OL, DIN is not soldered); amplifier U8: the DC voltage to ground on the two J6 holes should be about 2.5 V; if it is 0 V, check U8 orientation and soldering</td></tr>
       <tr><td>Records only a little</td><td>Speaker cable, the speaker itself (touch it with a 1.5 V battery; it should make a sound)</td></tr>
-      <tr><td rowspan="2">ToF</td><td>tofd does not start / 0 frames</td><td>J5 wire order (same order as the first 4 pins of the module, 1:1 straight cable); shorts at the module's soldered parts; <code>i2cdetect</code> to look for 0x29</td></tr>
+      <tr><td rowspan="2">ToF</td><td>tofd does not start / 0 frames</td><td>J8 wire order (same order as the first 4 pins of the module, 1:1 straight cable); shorts at the module's soldered parts; <code>i2cdetect</code> to look for 0x29</td></tr>
       <tr><td>Few valid zones, one column always 1–2 cm</td><td>The hole in the face blocks the view; dirty lens</td></tr>
       <tr><td rowspan="3">Camera</td><td>No vin_video device</td><td>Driver not loaded: <code>sudo modprobe -a vin_io imx219 vin_v4l2</code>; ribbon cable direction</td></tr>
       <tr><td>Busy</td><td>Stop visiond</td></tr>

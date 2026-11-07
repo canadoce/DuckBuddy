@@ -1149,8 +1149,10 @@ RATE = 48000
 
 
 def alsa_devs():
-    rc = os.path.expanduser("~/.asoundrc")
-    txt = open(rc).read() if os.path.exists(rc) else ""
+    txt = ""
+    for rc in ("/etc/asound.conf", os.path.expanduser("~/.asoundrc")):
+        if os.path.exists(rc):
+            txt += open(rc).read()
     if "pcm.duck_out" in txt and "pcm.duck_in" in txt:
         return "duck_out", "duck_in"
     return "plughw:CARD=aic3104,DEV=0", "plughw:CARD=aic3104,DEV=0"
@@ -1179,7 +1181,7 @@ def play_and_record(wav_path, record_s):
     """Start playback first (it starts with silence), then recording: if recording starts first, the whole recording sticks at ±32767 (seen on 10-25)."""
     out_dev, in_dev = alsa_devs()
     if "aic3104" not in open("/proc/asound/cards").read():
-        raise RuntimeError("sound card aic3104 is not registered (check i2c-2 and aic3104-a733.service)")
+        raise RuntimeError("sound card aic3104 is not registered (check the brain overlay and brain-audio.service, deploy/brain)")
     player = subprocess.Popen(["aplay", "-q", "-D", out_dev, wav_path], stderr=subprocess.PIPE)
     time.sleep(0.25)
     try:

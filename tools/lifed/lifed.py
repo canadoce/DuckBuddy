@@ -53,12 +53,12 @@ JEV_TIMEOUT_S = 1.2           # Jev answers in 0.3-0.5 s from here, 1.0 s on a c
 
 
 class Clock:
-    """The local time, when there is one. The OPi has no RTC and its system zone is UTC (2026-10-16:
-    at 00:05 here lifed called it afternoon), so: the wall clock only once NTP has set it, shifted
-    by a fixed zone offset (the system's zone is left alone)."""
+    """The local time, when there is one. The brain has no RTC, so the wall clock counts only once
+    NTP has set it. The zone is the system's (timedatectl set-timezone), or a fixed offset in hours
+    when one is given (--tz-hours)."""
 
-    def __init__(self, tz_hours: float):
-        self.tz = tz_hours * 3600.0
+    def __init__(self, tz_hours: float | None = None):
+        self.tz = None if tz_hours is None else tz_hours * 3600.0
         self.synced = False
         self.checked = -1e9
 
@@ -74,7 +74,7 @@ class Clock:
                 self.synced = False
         if not self.synced:
             return None
-        t = time.gmtime(time.time() + self.tz)
+        t = time.localtime() if self.tz is None else time.gmtime(time.time() + self.tz)
         return t.tm_hour, t.tm_min
 
     @staticmethod
@@ -1034,8 +1034,8 @@ def main():
     ap.add_argument("--jev", choices=judgments.MODES, default="shadow",
                     help="Jev on what is said: off; shadow (drop garbage, catch missed commands); on (also no reply "
                          "for murmurs, the small brain for greetings)")
-    ap.add_argument("--tz-hours", type=float, default=8.0,
-                    help="local time zone, hours from UTC (the robot's system zone is UTC)")
+    ap.add_argument("--tz-hours", type=float, default=None,
+                    help="a fixed time zone, hours from UTC (default: the system's zone)")
     a = ap.parse_args()
     asyncio.run(Lifed(a).run())
 
