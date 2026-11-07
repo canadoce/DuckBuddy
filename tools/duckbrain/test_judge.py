@@ -75,6 +75,54 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(out["model"], "jev-test")
         self.assertIsNone(fake.kw["extra_body"])
 
+    def test_a_local_server_needs_no_key(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        seen = {}
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                seen["path"], seen["auth"] = self.path, self.headers.get("Authorization")
+                seen["images"] = self.headers.get("TypeSafe-Danger-Zone-Images")
+                seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                body = json.dumps({"model": "glide-test", "answers": {
+                    "for_duck": {"type": "noul", "noul": 0.9},
+                    "intent": {"type": "choice", "choice": "sit", "confidence": 0.9,
+                               "probabilities": {"sit": 0.95}}}}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        old = (judge.SYSTEMONE_URL, judge._client, judge.LOG, os.environ.pop("TYPESAFE_API_KEY", None))
+        judge.SYSTEMONE_URL, judge._client, judge.LOG = f"http://127.0.0.1:{srv.server_port}", None, os.devnull
+        try:
+            out = judge.judge("utterance", {"text": "sit down", "named": True})
+            self.assertEqual(out["answers"]["intent"]["choice"], "sit")
+            self.assertEqual(out["model"], "glide-test")
+            self.assertEqual(seen["path"], "/v1/systemone")
+            self.assertIsNone(seen["auth"])
+            self.assertEqual(set(seen["body"]), {"state", "questions", "model"})
+            judge.judge("person", {}, {"view": JPEG})
+            self.assertEqual(seen["images"], "true")
+            self.assertEqual(seen["body"]["assets"][seen["body"]["state"]["view"]]["format"], "jpg")
+            self.assertEqual(seen["body"]["questions"]["face"]["type"], "box")
+            judge.BOX = False      # a server without Box questions
+            judge.judge("person", {}, {"view": JPEG})
+            self.assertNotIn("face", seen["body"]["questions"])
+            self.assertIn("person", seen["body"]["questions"])
+        finally:
+            judge.BOX = True
+            srv.shutdown()
+            judge.SYSTEMONE_URL, judge._client, judge.LOG = old[:3]
+            if old[3] is not None:
+                os.environ["TYPESAFE_API_KEY"] = old[3]
+
 
 if __name__ == "__main__":
     unittest.main()

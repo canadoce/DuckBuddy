@@ -858,11 +858,11 @@ class Life:
             if not ev.get("addressed", True):
                 return                                         # not for the duck
             self._open_convo("spoken to")
-            self._dialog("you", ev.get("text", ""))
+            self._dialog("you", ev.get("text", ""), **({"speaker": ev["speaker"]} if ev.get("speaker") else {}))
             self._gesture(out, "nod", body, times=1)        # heard you
             if self.cfg.brain and ev.get("text"):
                 out.append(Action("ask", {"text": ev["text"], "session": f"c{self.convo_id}",
-                                          "named": bool(ev.get("named", True))}))
+                                          "named": bool(ev.get("named", True)), "speaker": ev.get("speaker")}))
                 self.asking_since, self.thinking_cued = self.t, False
             if self.state == "IDLE":
                 self._go("ATTENDING", "spoken to")

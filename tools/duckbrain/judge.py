@@ -12,6 +12,13 @@ is and what it is not; only the context the questions need.
 `kind` is one of JUDGMENTS. Images (base64 JPEG) go in as assets, referenced from the state, with
 the danger-zone header the API wants for them; Box questions need jev-1.14.0 or later. The key is
 TYPESAFE_API_KEY in the environment (duckbrain's service reads ~/.config/duckbrain/typesafe.env).
+
+A System One server of your own (the same POST /v1/systemone request and answers, no key, on a
+trusted network) is used instead when DUCKBRAIN_SYSTEMONE_URL names its root, for example
+http://192.168.1.222:8006: plain JSON over HTTP, no SDK and no key. Such a server may not answer
+Box questions (where something is in a picture); they are left out of the request unless
+DUCKBRAIN_JEV_BOX=1, and the answers simply have no box (visiond then takes the person as straight
+ahead).
 Every call is logged (text, answers, timing; images only as size and hash) for offline calibration.
 """
 from __future__ import annotations
@@ -29,6 +36,8 @@ TEXT_MODEL = os.environ.get("DUCKBRAIN_JEV_MODEL", "jev-latest")
 IMAGE_MODEL = os.environ.get("DUCKBRAIN_JEV_IMAGE_MODEL", "jev-1.14.0")   # Box needs 1.14+
 TIMEOUT_S = float(os.environ.get("DUCKBRAIN_JEV_TIMEOUT", "3.0"))
 IMAGE_HEADER = {"TypeSafe-Danger-Zone-Images": "true"}
+SYSTEMONE_URL = os.environ.get("DUCKBRAIN_SYSTEMONE_URL", "").rstrip("/")   # a local server, no key
+BOX = os.environ.get("DUCKBRAIN_JEV_BOX", "0" if SYSTEMONE_URL else "1") == "1"   # ask Box questions
 
 # what the duck is, and its name, from its persona (tools/persona); the questions are the framework
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "persona"))
@@ -44,6 +53,30 @@ CAMERA = (f"`view` is one frame from the camera on {NAME}'s head. The centre of 
 
 class JudgeError(Exception):
     """Why a judgment could not be made: no_api_key, sdk_missing, unknown_kind, bad_image, api, timeout."""
+
+
+class LocalClient:
+    """A System One server of your own: the SDK's request as plain JSON, no key (trusted networks only)."""
+
+    def __init__(self, root: str):
+        self.url = root + "/v1/systemone"
+
+    def system_one(self, state, questions, model=None, timeout=None, extra_headers=None, extra_body=None):
+        import types
+        import urllib.request
+        body = {"state": state, "questions": questions, "model": model, **(extra_body or {})}
+        req = urllib.request.Request(self.url, data=json.dumps(body, ensure_ascii=False).encode(),
+                                     headers={"Content-Type": "application/json", **(extra_headers or {})})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            out = json.loads(r.read())
+        if not isinstance(out.get("answers"), dict):
+            raise ValueError(f"no answers: {str(out)[:200]}")
+        return types.SimpleNamespace(model=out.get("model", model), answers=out["answers"])
+
+
+def where() -> str:
+    """Which Jev this asks: the local server's root, or "typesafe"."""
+    return SYSTEMONE_URL or "typesafe"
 
 
 def _opt(what: str, not_for: str = "", examples: list[str] | None = None) -> dict:
@@ -219,6 +252,8 @@ def build(kind: str, state: dict, images: dict[str, str] | None = None):
             assets[ref] = {"type": "image", "format": "jpg", "data_base64": b64}
             state[name] = ref
     s, q = make(state)
+    if not BOX:
+        q = {name: x for name, x in q.items() if x.get("type") != "box"}
     headers = IMAGE_HEADER if assets else {}
     model = IMAGE_MODEL if assets else TEXT_MODEL
     return s, q, assets, headers, model
@@ -229,6 +264,10 @@ _client = None
 
 def _get_client():
     global _client
+    if SYSTEMONE_URL:
+        if _client is None:
+            _client = LocalClient(SYSTEMONE_URL)
+        return _client
     if not os.environ.get("TYPESAFE_API_KEY"):
         raise JudgeError("no_api_key")
     if _client is None:
@@ -301,7 +340,7 @@ def serve(port: int = 8211):
                     sdk = True
                 except ImportError:
                     sdk = False
-                self._send({"ok": True, "key": bool(os.environ.get("TYPESAFE_API_KEY")), "sdk": sdk})
+                self._send({"ok": True, "jev": where(), "key": bool(os.environ.get("TYPESAFE_API_KEY")), "sdk": sdk})
             else:
                 self._send({"ok": False, "error": "not here"}, 404)
 
@@ -318,8 +357,8 @@ def serve(port: int = 8211):
                 self._send({"ok": False, "error": "bad_request"}, 400)
 
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
-    print(time.strftime("%Y-%m-%d %H:%M:%S"), f"duckjev on 127.0.0.1:{port}, key {'set' if os.environ.get('TYPESAFE_API_KEY') else 'missing'}",
-          flush=True)
+    how = SYSTEMONE_URL or f"typesafe, key {'set' if os.environ.get('TYPESAFE_API_KEY') else 'missing'}"
+    print(time.strftime("%Y-%m-%d %H:%M:%S"), f"duckjev on 127.0.0.1:{port}, jev {how}", flush=True)
     srv.serve_forever()
 
 

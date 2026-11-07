@@ -42,7 +42,8 @@ KV="$(uname -r)"
 
 # ---- packages --------------------------------------------------------------
 PKGS="python3 python3-libgpiod i2c-tools device-tree-compiler gcc make flex bison bc libssl-dev libelf-dev alsa-utils v4l-utils curl
-	python3-numpy python3-opencv python3-serial python3-venv python3-pip polkitd rsync"
+	python3-numpy python3-opencv python3-serial python3-venv python3-pip polkitd rsync
+	python3-fastapi python3-uvicorn python3-soundfile"
 missing=""
 for p in $PKGS; do
 	dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'ok installed' || missing="$missing $p"

@@ -17,12 +17,14 @@ BRAIN_REPLY = {"emotion": "happy", "say": "Quack quack", "pinyin": "gua1 gua4", 
 def make(jev="shadow", answers=None, brain=BRAIN_REPLY, brain_delay=0.05):
     a = argparse.Namespace(robotd="/tmp/none.sock", tap="/tmp/none.tap", sock="/tmp/none.sock", trace="",
                            quiet=True, brain="http://127.0.0.1:1", tz_hours=8.0, vision="/tmp/none.sock", jev=jev,
+                           jev_timeout=lifed.JEV_TIMEOUT_S,
                            voice_dir="/tmp/none", audio_device="null", card="",
                            state=os.path.join(tempfile.gettempdir(), "lifed-test-state.json"))
     L = lifed.Lifed(a)
     calls = {"brain": 0, "judge": 0}
 
-    async def fake_brain(text, session):
+    async def fake_brain(text, session, speaker=None):
+        calls["speaker"] = speaker
         calls["brain"] += 1
         await asyncio.sleep(brain_delay)
         return dict(brain) if brain else None
@@ -56,6 +58,13 @@ class AskTest(unittest.TestCase):
         self.assertEqual(types, ["reply"])
         self.assertEqual(events[-1]["say"], "Quack quack")
 
+    def test_the_brain_hears_who_is_talking(self):
+        L, calls = make(jev="off")
+        asyncio.run(L.ask_brain("what are you doing", "c1", True, "Rafael"))
+        self.assertEqual(calls["speaker"], "Rafael")
+        self.assertTrue(L.context("Rafael").startswith("talking with Rafael"))
+        self.assertNotIn("talking with", L.context())
+
     def test_jev_down_is_a_counted_fallback_and_the_brain_answers(self):
         L, calls = make(answers=None)
         types, _ = ask(L, "what are you doing")
@@ -86,6 +95,42 @@ class AskTest(unittest.TestCase):
         self.assertEqual(types, ["judged", "reply"])
         self.assertEqual(events[-1]["via"], "small")
 
+
+class BrainErrorTest(unittest.TestCase):
+    def brain(self, code):
+        """A brain that answers /express with HTTP `code`, and a Lifed asking it."""
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.send_response(code)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        L, _ = make()
+        del L._call_brain           # the real one
+        L.brain = f"http://127.0.0.1:{srv.server_port}"
+        return L
+
+    def test_a_brain_without_an_llm_is_not_marked_down(self):
+        L = self.brain(500)
+        self.assertIsNone(asyncio.run(L._call_brain("hello", "c1")))
+        self.assertEqual(L.brain_down_until, 0.0)      # Jev, through the same brain, is still asked
+
+    def test_an_unreachable_brain_is_marked_down(self):
+        L, _ = make()
+        del L._call_brain
+        L.brain = "http://127.0.0.1:1"
+        self.assertIsNone(asyncio.run(L._call_brain("hello", "c1")))
+        self.assertGreater(L.brain_down_until, 0.0)
 
 
 class LookTest(unittest.TestCase):

@@ -1,0 +1,19 @@
+[Unit]
+Description=duckbrain (brain): the duck's online brain - replies (an OpenAI-style chat LLM) and Jev (through duckjev), 127.0.0.1:8210
+# lifed and visiond ask it; without an LLM or a Jev they fall back to the small brain and the rules.
+After=duckjev-dev.service
+Wants=duckjev-dev.service
+
+[Service]
+# DUCKBRAIN_LLM (the chat endpoint, .../v1/chat/completions) and DUCKBRAIN_LLM_MODEL, one per line
+# (deploy/brain/README.md). Without the file it tries http://127.0.0.1:8203, which is not there.
+EnvironmentFile=-%h/.config/duckbrain/duckbrain.env
+ExecStart=/usr/bin/python3 %h/duckbrain/server.py
+WorkingDirectory=%h/duckbrain
+StandardOutput=append:%h/robot/recs/duckbrain-service.log
+StandardError=append:%h/robot/recs/duckbrain-service.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
