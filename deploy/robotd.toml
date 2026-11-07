@@ -25,7 +25,8 @@ port = "/dev/ttyS0"
 # Feetech: which servo is which joint. One ID per joint in JOINT_NAMES order — left leg
 # (hip_yaw, hip_roll, hip_pitch, knee, ankle), neck_pitch, head_pitch, head_yaw, head_roll,
 # mouth, right leg (same order). Per robot, so it has to be set here; the bus refuses to open
-# without it rather than guess.
+# without it rather than guess. 0 = no servo on that joint (a printed dummy holds it at zero,
+# hardware/cad/servo-dummy): it is left off the bus and reads as its zero pose.
 # joint_ids = []
 # +1/-1 per joint, -1 where the servo turns opposite to the joint. Empty = all +1.
 # joint_signs = []
