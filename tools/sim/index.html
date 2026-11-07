@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phoebe Simulator</title>
+<style>
+:root { --bg:#f6f4ef; --card:#fff; --ink:#24221f; --mute:#8a857c; --duck:#fff3c4; --line:#e7e2d8;
+        --ok:#2f8f4e; --warn:#c77700; --bad:#c43c3c; --accent:#f2c94c; --accent-line:#e0b53a; --code:#f1eee7; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1b1a18; --card:#262421; --ink:#eeeae2; --mute:#9a958b; --duck:#4a3f1c; --line:#3a3732; --code:#1f1e1c; }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 -apple-system, "Segoe UI", sans-serif; }
+header { position:sticky; top:0; z-index:2; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+h1 { margin:0 12px 0 0; font-size:19px; }
+h2 { margin:0 0 8px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--mute); font-weight:600; }
+.chip { background:var(--card); border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:13px; color:var(--mute); white-space:nowrap; }
+.chip b { color:var(--ink); font-weight:600; }
+.ok { color:var(--ok)!important } .warn { color:var(--warn)!important } .bad { color:var(--bad)!important }
+.grid { display:grid; grid-template-columns: minmax(300px, 420px) 1fr; gap:14px; padding:14px 16px 40px; max-width:1500px; margin:0 auto; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.col { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0; }
+.row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.row + .row { margin-top:8px; }
+button { font:inherit; font-size:14px; padding:6px 10px; border-radius:9px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; }
+button:hover { border-color:var(--mute); }
+button.on { background:var(--accent); border-color:var(--accent-line); color:#24221f; }
+button.primary { background:var(--accent); border-color:var(--accent-line); color:#24221f; }
+input[type=text], select { font:inherit; font-size:14px; padding:6px 9px; border-radius:9px; border:1px solid var(--line); background:var(--bg); color:var(--ink); min-width:0; }
+input[type=text] { flex:1; }
+input[type=range] { flex:1; min-width:120px; }
+label { font-size:13px; color:var(--mute); }
+video { width:100%; border-radius:9px; background:#000; aspect-ratio:16/9; object-fit:cover; display:none; margin-top:8px; }
+video.live { display:block; }
+.meter { height:6px; border-radius:3px; background:var(--line); overflow:hidden; flex:1; min-width:80px; }
+.meter > div { height:100%; width:0; background:var(--ok); transition:width .08s; }
+.small { font-size:12px; color:var(--mute); }
+pre { margin:0; font:12px/1.4 ui-monospace, Menlo, monospace; background:var(--code); border-radius:8px; padding:8px; overflow:auto; max-height:260px; white-space:pre-wrap; word-break:break-word; }
+iframe { width:100%; height:640px; border:1px solid var(--line); border-radius:12px; background:var(--bg); }
+.svc { display:flex; align-items:center; gap:6px; }
+.svc button { padding:2px 8px; font-size:12px; }
+.tabs { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+.tabs button { font-size:12px; padding:3px 9px; }
+#log { height:320px; max-height:none; }
+.notes { max-height:120px; }
+details summary { cursor:pointer; color:var(--mute); font-size:13px; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Phoebe Simulator</h1>
+  <span class="chip">link <b id="link" class="warn">connecting</b></span>
+  <span class="chip">state <b id="lifeState">-</b></span>
+  <span class="chip">posture <b id="posture">-</b></span>
+  <span class="chip">battery <b id="battery">-</b></span>
+  <span class="chip">volume <b id="volume">-</b></span>
+  <span class="chip">playing <b id="playing">nothing</b></span>
+</header>
+
+<div class="grid">
+  <div class="col">
+    <section class="card">
+      <h2>Senses</h2>
+      <div class="row">
+        <button id="btnSound">Speaker off</button>
+        <button id="btnMic">Mic off</button>
+        <button id="btnCam">Camera off</button>
+      </div>
+      <div class="row"><label>mic</label><div class="meter"><div id="micLevel"></div></div></div>
+      <video id="video" muted playsinline></video>
+      <p class="small">Use headphones: with speakers the mic also hears the duck. The duck hears the mic only while "Mic on"; otherwise it hears silence.</p>
+    </section>
+
+    <section class="card">
+      <h2>Talk without the mic</h2>
+      <div class="row"><input id="sayText" type="text" placeholder="Phoebe, sit down"><button id="btnSay" class="primary">Say</button></div>
+      <div class="row"><label for="speaker">spoken by</label><input id="speaker" type="text" placeholder="nobody known (or a name)"></div>
+      <p class="small">Goes to lifed the way voiced sends what it hears: say the name to call it, then talk while it listens.</p>
+    </section>
+
+    <section class="card">
+      <h2>Touch and noises</h2>
+      <div class="row">
+        <button data-ev='{"type":"touch"}'>Pet its head</button>
+        <button data-ev='{"type":"sound","yaw":0.9}'>Loud noise, left</button>
+        <button data-ev='{"type":"sound","yaw":-0.9}'>Loud noise, right</button>
+      </div>
+      <div class="row"><label for="tag">robotd sound</label><select id="tag"></select><button id="btnTag">Play</button></div>
+    </section>
+
+    <section class="card">
+      <h2>ToF in the face</h2>
+      <div class="row">
+        <button id="tofOff" class="on">Nothing in front</button>
+        <input id="tof" type="range" min="30" max="2000" step="10" value="600">
+        <span class="chip"><b id="tofVal">-</b></span>
+      </div>
+      <p class="small">A hand close (under ~25 cm) is the theremin's; a person walking up shows as "near".</p>
+    </section>
+
+    <section class="card">
+      <h2>Power (the gamepad's Start)</h2>
+      <div class="row"><button id="btnStart" class="primary">Start</button><button id="btnStop">Stop</button></div>
+      <p class="small">The simulator presses Start at launch. Stopped (or with --no-policy), robotd holds its pose and lifed stays OFF.</p>
+    </section>
+
+    <section class="card">
+      <h2>Tilt the body</h2>
+      <div class="row" id="tilts"></div>
+      <p class="small">The fake IMU reports this gravity. Laid down for a moment, robotd calls it a fall.</p>
+    </section>
+
+    <section class="card">
+      <h2>Wi-Fi (pretend)</h2>
+      <div class="row"><label>joined</label><b id="wifiActive">-</b></div>
+      <div class="row"><input id="nets" type="text" placeholder="networks on the air, comma separated"><button id="btnNets">Set</button></div>
+      <p class="small">Show a Wi-Fi QR code for one of these to the camera after asking the duck to connect.</p>
+    </section>
+
+    <section class="card">
+      <h2>Notes</h2>
+      <pre id="notes" class="notes"></pre>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>The phone page (duckweb)</h2>
+      <iframe id="duckweb" title="duckweb"></iframe>
+    </section>
+
+    <section class="card">
+      <h2>Services</h2>
+      <div class="row" id="services"></div>
+    </section>
+
+    <section class="card">
+      <h2>Logs</h2>
+      <div class="tabs" id="tabs"></div>
+      <pre id="log"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Inside</h2>
+      <details open><summary>robotd: robot.state</summary><pre id="robotState">-</pre></details>
+      <details><summary>lifed: life.state</summary><pre id="lifeDump">-</pre></details>
+      <details><summary>robotd: robot.health</summary><pre id="health">-</pre></details>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let ws = null, actx = null, master = null, volumePct = null;
+const streams = new Map();            // play id -> {next, nodes:Set, name}
+const logs = new Map();               // service -> lines
+let tab = "lifed";
+const MIC_RATE = 48000;
+
+function note(text) {
+  const n = $("notes");
+  n.textContent = (new Date().toLocaleTimeString() + "  " + text + "\n" + n.textContent).slice(0, 6000);
+}
+
+// ── the link ─────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { $("link").textContent = "up"; $("link").className = "ok"; };
+  ws.onclose = () => { $("link").textContent = "down"; $("link").className = "bad"; setTimeout(connect, 1500); };
+  ws.onmessage = (m) => typeof m.data === "string" ? onJson(JSON.parse(m.data)) : onAudio(m.data);
+}
+function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+
+function onJson(m) {
+  switch (m.t) {
+    case "hello":
+      $("title").textContent = `${m.persona} Simulator`;
+      document.title = `${m.persona} Simulator`;
+      $("sayText").placeholder = `${m.persona}, sit down`;
+      if (!$("duckweb").src) $("duckweb").src = m.duckweb;
+      m.services.forEach(serviceRow);
+      for (const [n, lines] of Object.entries(m.logs)) logs.set(n, lines.slice());
+      renderTabs(); renderLog();
+      $("tag").innerHTML = m.tags.map((t) => `<option>${t}</option>`).join("");
+      $("tilts").innerHTML = "";
+      m.tilts.forEach((name) => {
+        const b = document.createElement("button");
+        b.textContent = name; b.dataset.tilt = name;
+        b.onclick = () => send({ t: "tilt", name });
+        $("tilts").appendChild(b);
+      });
+      showTilt(m.tilt); showTof(m.tof_mm); showVolume(m.volume); showWifi(m.networks, m.wifi);
+      if (m.life) showLife(m.life);
+      if (m.robot) showRobot(m.robot);
+      if (m.health) showHealth(m.health);
+      note(`persona ${m.persona} (${m.persona_path}); Jev ${m.jev || "off"}; chat LLM ${m.llm || "off (small brain)"}`);
+      break;
+    case "service": serviceRow(m); break;
+    case "log": addLog(m.name, m.line); break;
+    case "life": showLife(m.s); break;
+    case "robot": showRobot(m.s); break;
+    case "health": showHealth(m.s); break;
+    case "tilt": showTilt(m.name); break;
+    case "tof": showTof(m.mm); break;
+    case "volume": showVolume(m.pct); break;
+    case "wifi": showWifi(m.networks, m.active); break;
+    case "note": note(m.text); break;
+    case "play": streams.set(m.id, { next: 0, nodes: new Set(), name: m.name }); showPlaying(); break;
+    case "stop": stopStream(m.id); break;
+    case "played": setTimeout(() => { streams.delete(m.id); showPlaying(); }, 300); break;
+  }
+}
+
+// ── sound out ────────────────────────────────────────────────────────────
+function onAudio(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint8(0) !== 1 || !actx) return;
+  const ch = dv.getUint8(1), id = dv.getUint32(4, true), rate = dv.getUint32(8, true);
+  const pcm = new Int16Array(buf.slice(12));
+  const frames = Math.floor(pcm.length / ch);
+  if (!frames) return;
+  const ab = actx.createBuffer(ch, frames, rate);
+  for (let c = 0; c < ch; c++) {
+    const out = ab.getChannelData(c);
+    for (let i = 0; i < frames; i++) out[i] = pcm[i * ch + c] / 32768;
+  }
+  let s = streams.get(id);
+  if (!s) { s = { next: 0, nodes: new Set(), name: "?" }; streams.set(id, s); }
+  const src = actx.createBufferSource();
+  src.buffer = ab; src.connect(master);
+  const at = Math.max(s.next, actx.currentTime + 0.04);
+  src.start(at); s.next = at + ab.duration;
+  s.nodes.add(src); src.onended = () => s.nodes.delete(src);
+}
+function stopStream(id) {
+  const s = streams.get(id);
+  if (s) { s.nodes.forEach((n) => { try { n.stop(); } catch (e) {} }); s.nodes.clear(); }
+  streams.delete(id); showPlaying();
+}
+function showPlaying() {
+  const names = [...streams.values()].map((s) => s.name);
+  $("playing").textContent = names.length ? names.join(", ") : "nothing";
+}
+function applyVolume() {
+  if (master) master.gain.value = volumePct == null ? 1 : Math.pow(volumePct / 100, 2);
+}
+function ensureAudio() {
+  if (!actx) {
+    actx = new AudioContext({ sampleRate: MIC_RATE });
+    master = actx.createGain(); master.connect(actx.destination); applyVolume();
+  }
+  return actx.resume();
+}
+$("btnSound").onclick = async () => {
+  const b = $("btnSound");
+  if (b.classList.contains("on")) { await actx.suspend(); b.classList.remove("on"); b.textContent = "Speaker off"; return; }
+  await ensureAudio(); b.classList.add("on"); b.textContent = "Speaker on";
+};
+
+// ── mic in ───────────────────────────────────────────────────────────────
+let micStream = null, micNode = null, micSrc = null;
+const WORKLET = `class Cap extends AudioWorkletProcessor {
+  process(inputs) { const c = inputs[0] && inputs[0][0]; if (c) this.port.postMessage(c.slice(0)); return true; }
+} registerProcessor("cap", Cap);`;
+$("btnMic").onclick = async () => {
+  const b = $("btnMic");
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop()); micSrc.disconnect(); micNode.disconnect();
+    micStream = null; b.classList.remove("on"); b.textContent = "Mic off"; $("micLevel").style.width = "0"; return;
+  }
+  await ensureAudio();
+  if (!$("btnSound").classList.contains("on")) { $("btnSound").classList.add("on"); $("btnSound").textContent = "Speaker on"; }
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true, channelCount: 1 } });
+  await actx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" })));
+  micSrc = actx.createMediaStreamSource(micStream);
+  micNode = new AudioWorkletNode(actx, "cap");
+  let acc = new Float32Array(960), n = 0;
+  micNode.port.onmessage = (e) => {
+    for (const v of e.data) {
+      acc[n++] = v;
+      if (n === acc.length) {
+        const out = new Uint8Array(1 + n * 2); out[0] = 1;
+        const dv = new DataView(out.buffer); let peak = 0;
+        for (let i = 0; i < n; i++) {
+          const x = Math.max(-1, Math.min(1, acc[i])); peak = Math.max(peak, Math.abs(x));
+          dv.setInt16(1 + i * 2, x * 32767, true);
+        }
+        if (ws && ws.readyState === 1) ws.send(out);
+        $("micLevel").style.width = Math.min(100, peak * 140) + "%";
+        n = 0;
+      }
+    }
+  };
+  micSrc.connect(micNode);
+  b.classList.add("on"); b.textContent = "Mic on";
+};
+
+// ── camera ───────────────────────────────────────────────────────────────
+let camStream = null, camTimer = null;
+const canvas = document.createElement("canvas"); canvas.width = 1280; canvas.height = 720;
+$("btnCam").onclick = async () => {
+  const b = $("btnCam"), v = $("video");
+  if (camStream) {
+    clearInterval(camTimer); camStream.getTracks().forEach((t) => t.stop()); camStream = null;
+    v.classList.remove("live"); b.classList.remove("on"); b.textContent = "Camera off"; return;
+  }
+  camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+  v.srcObject = camStream; await v.play(); v.classList.add("live");
+  const g = canvas.getContext("2d");
+  camTimer = setInterval(() => {
+    if (!ws || ws.readyState !== 1 || ws.bufferedAmount > 2e6 || !v.videoWidth) return;
+    g.drawImage(v, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(async (blob) => {
+      const jpg = new Uint8Array(await blob.arrayBuffer());
+      const out = new Uint8Array(1 + jpg.length); out[0] = 2; out.set(jpg, 1); ws.send(out);
+    }, "image/jpeg", 0.75);
+  }, 150);
+  b.classList.add("on"); b.textContent = "Camera on";
+};
+
+// ── controls ─────────────────────────────────────────────────────────────
+$("btnSay").onclick = () => {
+  const text = $("sayText").value.trim();
+  if (!text) return;
+  send({ t: "say", text, speaker: $("speaker").value.trim() });
+  $("sayText").value = "";
+};
+$("sayText").onkeydown = (e) => { if (e.key === "Enter") $("btnSay").click(); };
+document.querySelectorAll("[data-ev]").forEach((b) => b.onclick = () => send({ t: "event", ev: JSON.parse(b.dataset.ev) }));
+$("btnTag").onclick = () => send({ t: "sound", tag: $("tag").value });
+$("btnStart").onclick = () => send({ t: "enable", on: true });
+$("btnStop").onclick = () => send({ t: "enable", on: false });
+$("tofOff").onclick = () => send({ t: "tof", mm: null });
+$("tof").oninput = () => send({ t: "tof", mm: +$("tof").value });
+$("btnNets").onclick = () => send({ t: "networks", networks: $("nets").value.split(",") });
+
+function showTof(mm) {
+  $("tofOff").classList.toggle("on", mm == null);
+  $("tofVal").textContent = mm == null ? "nothing" : `${mm} mm`;
+  if (mm != null) $("tof").value = mm;
+}
+function showTilt(name) { document.querySelectorAll("[data-tilt]").forEach((b) => b.classList.toggle("on", b.dataset.tilt === name)); }
+function showVolume(pct) { volumePct = pct; $("volume").textContent = pct == null ? "-" : `${Math.round(pct)} %`; applyVolume(); }
+function showWifi(nets, active) { $("wifiActive").textContent = active || "none"; if (document.activeElement !== $("nets")) $("nets").value = nets.join(", "); }
+
+// ── what is inside ───────────────────────────────────────────────────────
+function showLife(s) {
+  $("lifeState").textContent = s.state ?? "-";
+  $("lifeDump").textContent = JSON.stringify(s, null, 1);
+}
+function showRobot(s) {
+  const safety = s.safety || {};
+  $("posture").textContent = safety.fallen ? "fallen" : (s.rest ? "resting" : (s.policy || "holding"));
+  $("posture").className = safety.fallen ? "bad" : "";
+  $("robotState").textContent = JSON.stringify(s, null, 1);
+}
+function showHealth(h) {
+  $("health").textContent = JSON.stringify(h, null, 1);
+  const pct = h && h.battery && h.battery.percent;
+  $("battery").textContent = pct == null ? "-" : `${Math.round(pct)} %`;
+}
+
+// ── services and logs ────────────────────────────────────────────────────
+function serviceRow(s) {
+  let el = document.querySelector(`[data-svc="${s.name}"]`);
+  if (!el) {
+    el = document.createElement("span"); el.className = "chip svc"; el.dataset.svc = s.name;
+    el.innerHTML = `<b></b><span></span><button>restart</button>`;
+    el.querySelector("button").onclick = () => send({ t: "restart", name: s.name });
+    $("services").appendChild(el);
+    if (!logs.has(s.name)) logs.set(s.name, []);
+    renderTabs();
+  }
+  el.querySelector("b").textContent = s.name;
+  const st = el.querySelector("span");
+  st.textContent = s.status; st.className = s.status === "running" ? "ok" : "bad";
+}
+function renderTabs() {
+  $("tabs").innerHTML = "";
+  for (const n of logs.keys()) {
+    const b = document.createElement("button");
+    b.textContent = n; b.classList.toggle("on", n === tab);
+    b.onclick = () => { tab = n; renderTabs(); renderLog(); };
+    $("tabs").appendChild(b);
+  }
+}
+function addLog(name, line) {
+  if (!logs.has(name)) { logs.set(name, []); renderTabs(); }
+  const l = logs.get(name); l.push(line); if (l.length > 400) l.shift();
+  if (name === tab) {
+    const p = $("log"), atEnd = p.scrollTop + p.clientHeight >= p.scrollHeight - 30;
+    p.textContent += line + "\n";
+    if (p.textContent.length > 120000) renderLog();
+    if (atEnd) p.scrollTop = p.scrollHeight;
+  }
+}
+function renderLog() { const p = $("log"); p.textContent = (logs.get(tab) || []).join("\n") + "\n"; p.scrollTop = p.scrollHeight; }
+
+connect();
+</script>
+</body>
+</html>

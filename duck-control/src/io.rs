@@ -212,6 +212,9 @@ pub struct FakeIo {
     pub torque_writes: usize,
     /// The last `set_limp` mask.
     pub limp: [bool; NUM_JOINTS],
+    /// A file holding the gravity to report ("x y z" in the trunk frame), re-read a few times a
+    /// second: how a simulator tips the fake robot over. `None` keeps the IMU as set.
+    tilt_file: Option<std::path::PathBuf>,
 }
 
 impl Default for FakeIo {
@@ -239,6 +242,25 @@ impl FakeIo {
             torque: None,
             torque_writes: 0,
             limp: [false; NUM_JOINTS],
+            tilt_file: None,
+        }
+    }
+
+    /// Report the gravity written in `path` ("x y z", trunk frame, any length; upright is
+    /// `0 0 -1`), re-read every tenth read. A missing or unreadable file leaves the IMU as it was.
+    pub fn tilted_by(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.tilt_file = Some(path.into());
+        self
+    }
+
+    fn read_tilt(&mut self) {
+        let Some(path) = &self.tilt_file else { return };
+        let Ok(text) = std::fs::read_to_string(path) else { return };
+        let v: Vec<f64> = text.split_whitespace().filter_map(|w| w.parse().ok()).collect();
+        if let [x, y, z] = v[..] {
+            if let Some(imu) = ImuData::from_gravity([x, y, z]) {
+                self.sensors.imu = imu;
+            }
         }
     }
 
@@ -281,6 +303,9 @@ impl RobotIo for FakeIo {
         if self.fail_reads > 0 {
             self.fail_reads -= 1;
             return Err(IoError::Simulated);
+        }
+        if self.reads % 10 == 0 {
+            self.read_tilt();
         }
         self.reads += 1;
         Ok(self.sensors)
@@ -352,6 +377,21 @@ mod tests {
 
     /// A read failure must be a one-shot, or a test that injects one can never recover and
     /// the loop's retry path is untestable.
+    #[test]
+    fn a_tilt_file_tips_the_fake_robot() {
+        let path = std::env::temp_dir().join(format!("fake-tilt-{}", std::process::id()));
+        std::fs::write(&path, "0 2 0").unwrap();
+        let mut io = FakeIo::new().tilted_by(&path);
+        let g = io.read().unwrap().imu.gravity;
+        assert!((g[1] - 1.0).abs() < 1e-9 && g[0].abs() < 1e-9 && g[2].abs() < 1e-9, "{g:?}");
+        std::fs::write(&path, "0 0 -1").unwrap();
+        for _ in 0..10 {
+            io.read().unwrap();
+        }
+        assert!((io.read().unwrap().imu.gravity[2] + 1.0).abs() < 1e-9);
+        std::fs::remove_file(&path).ok();
+    }
+
     #[test]
     fn simulated_read_failure_clears_itself() {
         let mut io = FakeIo::new();
