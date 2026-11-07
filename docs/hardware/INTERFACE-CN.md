@@ -33,8 +33,8 @@ All 15 servos share **one** single-wire half-duplex bus. The servos run directly
 
 Software:
 
-- Audio, servo UART and I²C: `deploy/audio/install-aic3104-a733.sh --hat robothat-e1`
-  (see [`deploy/audio/README-A733-CN.md`](../../deploy/audio/README-A733-CN.md)).
+- Board setup (codec driver, audio, servo UART, I²C buses, camera) and the services:
+  `deploy/brain/deploy.sh <user@host> --install` (see [`deploy/brain/README.md`](../../deploy/brain/README.md)).
 - robotd: [`deploy/robots/opi-hl2915-robothat-e1.toml`](../../deploy/robots/opi-hl2915-robothat-e1.toml)
   (`port = "/dev/ttyS0"`, `imu_source = "bno055"`), finished with `tools/bringup`.
 

@@ -1,0 +1,6 @@
+# The brain: Orange Pi Zero 3W with the Robot HAT E1.
+# Servo bus = UART0 (header pins 8/10).
+KERNEL=="ttyS0", SYMLINK+="serial0 duck-servos", GROUP="dialout", MODE="0660"
+# I2C and GPIO access for the i2c / gpio groups
+SUBSYSTEM=="i2c-dev", GROUP="i2c", MODE="0660"
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"

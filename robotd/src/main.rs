@@ -1020,8 +1020,16 @@ fn spawn_control_thread(
 
             if fake {
                 tracing::warn!("--fake: no bus, no robot");
+                // A mid-pack voltage (3.7 V a cell) of the configured pack, so `--fake` also
+                // runs with a 3S-only config instead of refusing the fake 2S battery.
+                let mut io = FakeIo::at(DEFAULT_POSITION);
+                if let (Some(slow), Some(&cells)) =
+                    (io.slow.as_mut(), params.battery.cells.first())
+                {
+                    slow.volts = 3.7 * f64::from(cells);
+                }
                 runtime.block_on(control_loop(
-                    FakeIo::at(DEFAULT_POSITION),
+                    io,
                     state,
                     intents,
                     params,

@@ -1,5 +1,5 @@
 [Unit]
-Description=duckweb (dev): a phone page for what Xiaobai hears, says and means, :8088 on the local network
+Description=duckweb (brain): a phone page for what the duck hears, says and means, :8088 on the local network
 After=lifed-dev.service
 
 [Service]

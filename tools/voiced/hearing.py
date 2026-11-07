@@ -12,7 +12,7 @@ Adapted from WaliRobot's `brain/wali/hearing.py` (same models, same lessons: cop
 popping it, transcribe on its own thread so the mic loop never stalls, restart arecord when it dies,
 drop segments too quiet to be speech).
 
-    ~/voiced/.venv/bin/python hearing.py [--mic plughw:CARD=aic3104,DEV=0] [--models ~/models/asr-sensevoice]
+    ~/voiced/.venv/bin/python hearing.py [--mic duck_in] [--models ~/models/asr-sensevoice]
     ~/voiced/.venv/bin/python hearing.py --wav test.wav     # transcribe one 16 kHz wav and exit
 """
 import argparse
@@ -53,7 +53,8 @@ ADDRESSED_S = 8.0          # after a call, speech is for the duck this long
 # a voice at 1 m only ~0.08); 0.35 keeps the whole word. Tuned on the two-syllable Chinese name: check
 # it again with the English name (a short or soft name is the easiest to cut).
 VAD_THRESHOLD = 0.35
-PGA_CAPTURE = 72           # codec capture gain, 0.5 dB steps (the board came up at 60)
+PGA_CAPTURE = -1           # codec capture gain, 0.5 dB steps; -1 leaves it to brain-audio-init
+                           # (BRAIN_MIC_GAIN in /etc/default/brain-audio, deploy/brain)
 VAD_MIN_SILENCE = 0.35
 VAD_MIN_SPEECH = 0.25
 VAD_MAX_SPEECH = 12.0
@@ -263,7 +264,7 @@ class Ears:
     def keep_clock(self):
         """Hold the shared 48 kHz stream open with silence: the codec's playback and capture share
         one I2S clock, and when the last player closed it the mic read zeros (2026-10-14).
-        Needs ~/.asoundrc's duck_out / duck_in (deploy/opi-dev/asoundrc)."""
+        Needs duck_out / duck_in from /etc/asound.conf (deploy/brain/rootfs/etc/asound.conf)."""
         if not self.a.keep_alive:
             return
         cmd = ["aplay", "-q", "-D", self.a.keep_alive, "-f", "S16_LE", "-r", "48000", "-c", "2", "-t", "raw", "/dev/zero"]
@@ -346,7 +347,7 @@ class Ears:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--mic", default="duck_in", help="capture device (~/.asoundrc's dsnoop)")
+    ap.add_argument("--mic", default="duck_in", help="capture device (/etc/asound.conf's dsnoop)")
     ap.add_argument("--keep-alive", default="duck_out",
                     help="playback device held open with silence to keep the codec clock running ('' = off)")
     ap.add_argument("--models", default=os.path.expanduser("~/models/asr-sensevoice"))

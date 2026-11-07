@@ -1,0 +1,59 @@
+#!/bin/sh
+# Mixer setup of the brain's TLV320AIC3104 (Robot HAT E1), card "aic3104".
+#
+# The kernel codec driver sets the PLL, the I2S format and powers the paths
+# (DAPM); this sets the levels and the routing on top, once at boot. Every
+# control is also in alsamixer (alsamixer -c aic3104).
+#
+#   speaker: DAC -> LEFT_LOP / RIGHT_LOP -> PAM8406 (always on); J1 is on RIGHT_LOP
+#   mic:     onboard MEMS mic on MIC2R -> both PGAs (a mono capture gets full level)
+#
+# Environment (from /etc/default/brain-audio, all optional):
+#   BRAIN_PCM_VOLUME   DAC volume, 0..127 (0.5 dB steps, 127 = 0 dB). Default 103 = -12 dB.
+#   BRAIN_LOP_GAIN     line output stage gain in dB, 0..9. The PAM8406 clips at +9 dB
+#                      with a full-scale signal. Default 0.
+#   BRAIN_MIC_GAIN     PGA capture volume, 0..119 (0.5 dB steps). Default 72 = +36 dB,
+#                      the level voiced's speech recognition was tuned at.
+set -u
+
+CARD=aic3104
+PCM_VOLUME=${BRAIN_PCM_VOLUME:-103}
+LOP_GAIN=${BRAIN_LOP_GAIN:-0}
+MIC_GAIN=${BRAIN_MIC_GAIN:-72}
+
+# The card can appear a little after the codec module loads.
+for _ in $(seq 1 30); do
+	amixer -c "$CARD" info >/dev/null 2>&1 && break
+	sleep 0.5
+done
+if ! amixer -c "$CARD" info >/dev/null 2>&1; then
+	echo "brain-audio-init: no ALSA card $CARD" >&2
+	exit 1
+fi
+
+set_c() { amixer -q -c "$CARD" cset name="$1" "$2" || echo "brain-audio-init: cannot set '$1'" >&2; }
+set_s() { amixer -q -c "$CARD" sset "$1" "$2" || echo "brain-audio-init: cannot set '$1'" >&2; }
+
+# Output: slow driver power-up so the always-on amp does not clack when the
+# line outputs switch on (the same timing the board used before: 800 ms, 4 ms steps).
+set_c 'Output Driver Power-On time' 800ms
+set_c 'Output Driver Ramp-up step' 4ms
+set_c 'PCM Playback Volume' "$PCM_VOLUME,$PCM_VOLUME"
+set_c 'Line DAC Playback Volume' 118,118
+set_c 'Line Playback Switch' on,on
+set_c 'Line Playback Volume' "$LOP_GAIN,$LOP_GAIN"
+
+# Input: the onboard mic only. MIC2L is tied to ground; LINE1 (J2/J9) is unused.
+set_s 'Left PGA Mixer Mic2R' on
+set_s 'Right PGA Mixer Mic2R' on
+for input in Mic2L Line1L Line1R; do
+	set_s "Left PGA Mixer $input" off
+	set_s "Right PGA Mixer $input" off
+done
+# ADC high-pass at 0.0045 x 48 kHz = 216 Hz: removes the mic's DC offset
+# (about 5 % of full scale without it) and low rumble.
+set_c 'ADC HPF Cut-off' 0.0045xFs,0.0045xFs
+set_c 'PGA Capture Switch' on,on
+set_c 'PGA Capture Volume' "$MIC_GAIN,$MIC_GAIN"
+
+echo "brain-audio-init: speaker PCM $PCM_VOLUME/127, line out +$LOP_GAIN dB, mic PGA $MIC_GAIN/119"

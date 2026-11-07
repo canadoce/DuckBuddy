@@ -1,0 +1,40 @@
+#!/usr/bin/python3 -I
+# Orange Pi Zero 3W (A733): make "reboot" work from the SD card.
+#
+# Linux runs the SD card in UHS mode (1.8 V signalling). A software reboot does
+# not cut the card power: it comes from the PMIC switch dc1sw2 (AXP8191 at
+# 0x36 on /dev/i2c-13, register 0x11 bit 4), which is shared with the fan and
+# an I2C bus, and the PMIC is not reset by a warm reset. The card then stays in
+# 1.8 V mode, the boot ROM cannot read it at 3.3 V, and the board stays off
+# until the power is pulled.
+#
+# systemd-shutdown runs this right before the final reboot, after the file
+# systems are read-only. It turns dc1sw2 off for 0.5 s and back on, so the card
+# powers up again in its default 3.3 V mode. Only for "reboot".
+import fcntl, os, sys, time
+
+if len(sys.argv) < 2 or sys.argv[1] != "reboot":
+    sys.exit(0)
+
+I2C_SLAVE_FORCE = 0x0706
+REG, BIT = 0x11, 1 << 4
+
+def log(msg):
+    try:
+        with open("/dev/kmsg", "w") as k:
+            k.write("sd-card-power-cycle: %s\n" % msg)
+    except OSError:
+        pass
+
+try:
+    fd = os.open("/dev/i2c-13", os.O_RDWR)
+    fcntl.ioctl(fd, I2C_SLAVE_FORCE, 0x36)
+    os.write(fd, bytes([REG]))
+    val = os.read(fd, 1)[0]
+    log("reg 0x11 = 0x%02x, cycling dc1sw2" % val)
+    os.write(fd, bytes([REG, val & ~BIT]))
+    time.sleep(0.5)
+    os.write(fd, bytes([REG, val | BIT]))
+    time.sleep(0.1)
+except OSError as e:
+    log("failed: %s" % e)
