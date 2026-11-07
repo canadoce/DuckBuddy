@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """The two head mics as voiced reads them since 2026-10-18: 48 kHz stereo straight from the codec (the
 dsnoop), kept for a few seconds so a VAD segment's span can be cut out of it for its direction (doa.py),
-and turned into the 16 kHz mono that VAD and SenseVoice want here, instead of by ALSA's plug.
+and turned into the 16 kHz mono that VAD and the ASR want here, instead of by ALSA's plug.
 numpy only (no scipy on the robot); tested in test_stereo.py.
 """
 from __future__ import annotations

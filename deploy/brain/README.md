@@ -31,7 +31,7 @@ After the first `--install`, reboot once (`sudo reboot`): the overlay and the co
 | Reboot fix | the SD card's power is cut for 0.5 s on reboot (it stays in 1.8 V mode otherwise and the board does not come back) | `/usr/lib/systemd/system-shutdown/sd-card-power-cycle` |
 | Devices, groups | `/dev/duck-servos`, i2c / gpio groups; the user joins dialout, i2c, gpio, audio, video, netdev and robot (the daemons' sockets); lingering on | `/etc/udev/rules.d/99-brain.rules` |
 | Wi-Fi from a QR code | NetworkManager allowed for group netdev (polkit) | `/etc/polkit-1/rules.d/50-brain-nm.rules` |
-| Packages | Python numpy, OpenCV and pyserial (tools/bringup), venv, build tools for the driver | |
+| Packages | Python numpy, OpenCV and pyserial (tools/bringup), FastAPI, uvicorn and soundfile (duckbrain), venv, build tools for the driver | |
 
 It also removes the earlier opi-robot-hat setup (robot-hat-* services, `/opt/robot-hat`, the Cone
 Radio web app, kept as `~/board-demos-backup-*.tgz`).
@@ -46,22 +46,44 @@ MIC2R and feeds both capture channels.
 | Where | What |
 |---|---|
 | `~/robot` | `robotd`, `tofd`, `robotctl`, `sounds`, the robot configs, `active.toml` → the chosen config, `robotd.env`, onnxruntime 1.28.3, `recs/` (service logs) |
-| `~/lifed` `~/voiced` `~/visiond` `~/duckweb` `~/persona` | the Python services from [tools](../../tools); `~/lifed/voice` the voice clips (rendered on your computer with edge-tts); `~/visiond/duckcam` built on the board |
+| `~/lifed` `~/voiced` `~/visiond` `~/duckweb` `~/duckbrain` `~/persona` | the Python services from [tools](../../tools); `~/lifed/voice` the voice clips (rendered on your computer with edge-tts); `~/visiond/duckcam` built on the board |
 | `~/voiced/.venv` | sherpa-onnx (system numpy) |
-| `~/models/asr-sensevoice` | SenseVoice-Small int8, silero VAD, gtcrn denoiser |
+| `~/models/hearing` | Moonshine v2 base English (speech to text), silero VAD, DPDFNet and GTCRN denoisers, NVIDIA TitaNet-small (voice prints) |
 | `/var/lib/robot/sounds` | robotd's sound bank (`sounds ensure-bank`) |
 | `~/.config/systemd/user` | the user units: [units](units/README.md) |
 
 The services: robotd (the body), tofd (the ToF in the face, on J8), lifed (the life layer),
-voiced (the ears), visiond (the eyes), duckweb (the phone page, `http://<brain>:8088`).
+voiced (the ears), visiond (the eyes), duckweb (the phone page, `http://<brain>:8088`), duckbrain
+(the online brain, `127.0.0.1:8210`) and duckjev (Jev's judgments for duckbrain, `127.0.0.1:8211`).
+
+**Who is speaking**: voiced knows people by their voice once they introduce themselves to the duck:
+"Phoebe, my name is Rafael" (or "call me Rafael"). Later phrases that match the voice well teach it
+more. The voice prints live in `~/.config/duck/voices.json` (`$DUCK_VOICES` names another file); manage them with
+`~/voiced/.venv/bin/python ~/voiced/voices.py list | forget NAME | add NAME a.wav ... | who a.wav`
+(16 kHz mono wavs). voiced's log shows the name and score of each phrase (`heard: ... - Rafael (0.81)`);
+`THRESHOLD` in `tools/voiced/voices.py` is the score a phrase needs.
+
+**duckbrain and Jev** read their settings from `~/.config/duckbrain`, files you write (deploy.sh
+never does), one `NAME=value` per line, then `systemctl --user restart duckjev-dev duckbrain-dev`:
+
+| File | Setting | What |
+|---|---|---|
+| `jev.env` | `DUCKBRAIN_SYSTEMONE_URL=http://<host>:<port>` | a System One server of your own (no key, trusted network only); Box questions are left out unless `DUCKBRAIN_JEV_BOX=1` |
+| `jev.env` | `TYPESAFE_API_KEY=...` | TypeSafe's hosted Jev instead (needs `typesafe-sdk`, not installed here) |
+| `duckbrain.env` | `DUCKBRAIN_LLM=http://<host>:<port>/v1/chat/completions` | the OpenAI-style chat LLM (text and images) for the duck's replies; `DUCKBRAIN_LLM_MODEL` pins the model |
+
+Without them each part falls back: no Jev, lifed keeps to its rules; no LLM, the offline small brain
+answers. A local Jev slower than TypeSafe's (about 0.4 s) needs lifed to wait longer: put
+`LIFED_ARGS="--jev-timeout 2.5"` in `~/robot/lifed.env` (deploy.sh writes it empty once and never
+overwrites it), then restart lifed-dev.
 
 **While the legs are not built**, `~/robot/robotd.env` holds `ROBOTD_ARGS="--fake --no-policy"`:
 robotd runs without the servo bus and nothing moves, but the sounds, the voice, the camera, the ToF
 and the phone page all work. Empty `ROBOTD_ARGS` once the servo IDs and the zero pose are set with
 [tools/bringup](../../tools/bringup/README.md). deploy.sh never overwrites `robotd.env`.
 
-Not started by deploy.sh: padd (the gamepad, it walks the robot) and frpc (the tunnel to the
-duckbrain voice server).
+Not started by deploy.sh: padd (the gamepad, it walks the robot) and frpc (the tunnel to a
+duckbrain on another machine; not needed with duckbrain on the brain).
 
 ## Checks
 
@@ -70,6 +92,7 @@ aplay -l                                    # card aic3104
 speaker-test -D duck_out -c 2 -t sine -f 1000 -l 1
 arecord -D duck_in -f S16_LE -r 48000 -c 2 -d 3 /tmp/mic.wav
 i2cdetect -y 2                              # 0x29: the ToF on J8
-systemctl --user status robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev
+systemctl --user status robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev duckjev-dev duckbrain-dev
+curl -s 127.0.0.1:8210/health                # duckbrain: llm and jev
 tail -f ~/robot/recs/voiced-service.log     # what it hears
 ```

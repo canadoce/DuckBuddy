@@ -42,7 +42,7 @@ Text fields can be written as a list of strings. On loading they are joined dire
 
 The duck is spoken to in English:
 
-- voiced runs SenseVoice with `language="en"`. It drops a transcript as noise only when it has no English words, or only filler words ("Okay.", "Mm.", "Uh, the."). Short commands such as "Stop.", "Go." or "Sit." always pass.
+- voiced transcribes with Moonshine v2 (English only). It drops a transcript as noise only when it has no English words, or only filler words ("Okay.", "Mm.", "Uh, the."). Short commands such as "Stop.", "Go." or "Sit." always pass.
 - lifed matches its command words as whole words ("hi" is not found in "this"), and not right after a negation ("don't sit down"). The words that stop something ("stop", "wait", "cancel") always count.
 - The duck answers in duck-speak: robotd makes one quack per syllable. `duckspeak.py` turns the English words of an answer into robotd's syllables: one per English syllable, the vowel kept, the stressed syllable high, the last one falling (or rising for a question), and the punctuation as pauses.
 - The few spoken instructions (Wi-Fi by QR code, its page address, missions) are recorded clips in an English voice. After changing `tools/lifed/prompts.py`, render them again and copy them to the robot:

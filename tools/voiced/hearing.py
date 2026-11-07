@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """voiced, part 1: the duck's ears, offline (P2 of docs/project/duck-life-roadmap-20261014-CN.md).
 
-Always listening, no wake word: silero VAD cuts each utterance out of the mic stream, SenseVoice-Small
-(int8, sherpa-onnx, on the OPi's CPU, set to English) transcribes it, and the text goes to lifed as an
-event. Its name in the sentence (the persona's name, and what ASR writes for it: whole words, any
+Always listening, no wake word: silero VAD cuts each utterance out of the mic stream, Moonshine v2
+base (English, quantized, sherpa-onnx, on the OPi's CPU) transcribes it, a voice print says who spoke
+(voices.py: the people it has met, "my name is ..."), and the text goes to lifed as an event, with
+the speaker's name when it knows them. Its name in the sentence (the persona's name, and what ASR writes for it: whole words, any
 case) is a call — the duck turns and answers — and opens a conversation in lifed, inside which what is
 said is for the duck without the name (`named` on each `say`; voiced's own 8 s `addressed` window is
 kept for older lifeds).
@@ -12,8 +13,11 @@ Adapted from WaliRobot's `brain/wali/hearing.py` (same models, same lessons: cop
 popping it, transcribe on its own thread so the mic loop never stalls, restart arecord when it dies,
 drop segments too quiet to be speech).
 
-    ~/voiced/.venv/bin/python hearing.py [--mic duck_in] [--models ~/models/asr-sensevoice]
-    ~/voiced/.venv/bin/python hearing.py --wav test.wav     # transcribe one 16 kHz wav and exit
+    ~/voiced/.venv/bin/python hearing.py [--mic duck_in] [--models ~/models/hearing]
+    ~/voiced/.venv/bin/python hearing.py --wav test.wav     # transcribe one 16 kHz wav (and say who) and exit
+
+~/models/hearing (deploy/brain/deploy.sh): silero_vad.onnx, dpdfnet_baseline.onnx, gtcrn_simple.onnx,
+nemo_en_titanet_small.onnx and moonshine/ (encoder_model.ort, decoder_model_merged.ort, tokens.txt).
 """
 import argparse
 import json
@@ -30,6 +34,7 @@ import numpy as np
 import sherpa_onnx
 
 import doa
+import voices
 from stereo import FACTOR, FS_IN, Decimator, Ring
 
 # who the duck is (its name, its character) comes from its persona: tools/persona, ~/persona on the robot
@@ -38,7 +43,7 @@ from persona import load as load_persona  # noqa: E402
 
 PERSONA = load_persona()
 NAME = PERSONA.name
-# what SenseVoice writes for the name when it mishears it (the persona's list: for "Biscuit", "biscuits" /
+# what the ASR writes for the name when it mishears it (the persona's list: for "Biscuit", "biscuits" /
 # "biskit" / ...)
 NAME_ALIASES = PERSONA.name_aliases
 # The name and its mishearings, as whole words in any case ("Biscuit," or "BISCUIT" but not "biscuitry");
@@ -46,8 +51,8 @@ NAME_ALIASES = PERSONA.name_aliases
 NAME_RE = re.compile(r"(?<![a-z0-9])(?:" + "|".join(
     r"[\s,.!?-]+".join(re.escape(w) for w in n.split())
     for n in sorted({NAME, *NAME_ALIASES}, key=len, reverse=True) if n.split()) + r")(?![a-z0-9])", re.I)
-# SenseVoice's language: the duck is spoken to in English
-LANGUAGE = "en"
+# the speech-to-text model, in ~/models/hearing (English only: the duck is spoken to in English)
+MOONSHINE = "moonshine"
 ADDRESSED_S = 8.0          # after a call, speech is for the duck this long
 # 0.5 cut the name short to 0.7 s, heard as another word (2026-10-14: servo and fan noise at RMS 0.026,
 # a voice at 1 m only ~0.08); 0.35 keeps the whole word. Tuned on the two-syllable Chinese name: check
@@ -63,15 +68,18 @@ MIN_RMS = 0.01
 # segment is re-cut from the raw stream with this much before and after it (tuned on the Chinese name).
 PRE_ROLL_S, POST_ROLL_S = 0.25, 0.1
 # The VAD listens through a neural denoiser (GTCRN, sherpa-onnx, 0.5 MB): on the robot it took the
-# servo / fan floor from RMS 0.027 to 0.0008 while a voice lost only 3 dB. SenseVoice still gets the
-# raw audio — denoised, the name came out wrong.
-DENOISER = "gtcrn_simple.onnx"
+# servo / fan floor from RMS 0.027 to 0.0008 while a voice lost only 3 dB. The ASR still gets the
+# raw audio — denoised, the name came out wrong (SenseVoice, 2026-10; check again with Moonshine).
+# 2026-11: DPDFNet (sherpa-onnx, 2026-03, 9 MB) is the default, about GTCRN's CPU per second of audio;
+# --denoiser gtcrn keeps the old one. DN_MIN_RMS below was set on GTCRN's output: check the quiet
+# room's and a voice's denoised levels in the log ("too quiet (rms ..., denoised ...)") after a change.
+DENOISERS = {"dpdfnet": "dpdfnet_baseline.onnx", "gtcrn": "gtcrn_simple.onnx"}
 HISTORY_S = 30.0             # quieter segments are noise, not fed to ASR (raise if it hallucinates)
 MIN_CHARS = 1
 # The VAD's own segment is the denoised audio, where steady noise is all but gone and a voice keeps
 # its level: gate on that, not on the raw re-cut. 2026-10-16: for 14 minutes something in the room
 # kept the raw level at RMS 0.057 (a voice at 1 m is ~0.08) and the VAD cut a segment every 5 s —
-# 181 of them, SenseVoice hearing "Mm.", ".", "Okay.", a Japanese kana — while the quiet room's denoised floor
+# 181 of them, the ASR (SenseVoice then) hearing "Mm.", ".", "Okay.", a Japanese kana — while the quiet room's denoised floor
 # is 0.0006-0.0044. Speech the same evening (denoised): 0.020-0.021 at 1 m, 0.016-0.018 at 2-3 m;
 # the gate sits at half the far voice and twice the floor's peak.
 DN_MIN_RMS = 0.008
@@ -103,8 +111,18 @@ def log(msg):
 
 
 def make_recognizer(d):
-    return sherpa_onnx.OfflineRecognizer.from_sense_voice(
-        model=f"{d}/model.int8.onnx", tokens=f"{d}/tokens.txt", num_threads=2, use_itn=True, language=LANGUAGE)
+    m = f"{d}/{MOONSHINE}"
+    return sherpa_onnx.OfflineRecognizer.from_moonshine_v2(
+        encoder=f"{m}/encoder_model.ort", decoder=f"{m}/decoder_model_merged.ort", tokens=f"{m}/tokens.txt",
+        num_threads=2)
+
+
+def make_voices(d):
+    """Who is speaking (voices.py), or None when the voice-print model is not there."""
+    if not os.path.exists(f"{d}/{voices.MODEL}"):
+        log(f"no {d}/{voices.MODEL}: speakers are not told apart")
+        return None
+    return voices.Voices(d)
 
 
 def make_vad(d):
@@ -118,13 +136,17 @@ def make_vad(d):
     return sherpa_onnx.VoiceActivityDetector(c, buffer_size_in_seconds=30)
 
 
-def make_denoiser(d):
-    path = f"{d}/{DENOISER}"
+def make_denoiser(d, which="dpdfnet"):
+    path = f"{d}/{DENOISERS[which]}"
     if not os.path.exists(path):
         return None
-    return sherpa_onnx.OnlineSpeechDenoiser(sherpa_onnx.OnlineSpeechDenoiserConfig(
-        model=sherpa_onnx.OfflineSpeechDenoiserModelConfig(
-            gtcrn=sherpa_onnx.OfflineSpeechDenoiserGtcrnModelConfig(model=path))))
+    if which == "dpdfnet":
+        model = sherpa_onnx.OfflineSpeechDenoiserModelConfig(
+            dpdfnet=sherpa_onnx.OfflineSpeechDenoiserDpdfNetModelConfig(model=path))
+    else:
+        model = sherpa_onnx.OfflineSpeechDenoiserModelConfig(
+            gtcrn=sherpa_onnx.OfflineSpeechDenoiserGtcrnModelConfig(model=path))
+    return sherpa_onnx.OnlineSpeechDenoiser(sherpa_onnx.OnlineSpeechDenoiserConfig(model=model))
 
 
 def transcribe(rec, samples):
@@ -200,14 +222,18 @@ class Ears:
             self.stats = dict.fromkeys(self.stats, 0)
             self.stats_at = time.time()
 
-    def heard(self, text, d=None):
+    def heard(self, text, d=None, who=None):
         """One utterance: a call if it names the duck, then (addressed or not) what was said. `d`: its
-        direction (doa.Direction), or None."""
+        direction (doa.Direction), or None; `who`: voices.Voices.hear's answer, or None."""
         now = time.time()
         ok = d is not None and d.conf >= DIR_MIN_CONF
         where = {"yaw": round(d.yaw, 3) if ok else 0.0, "yaw_back": round(d.yaw_back, 3) if ok else None,
                  "dir_sigma": round(d.sigma, 3) if d else None, "dir_conf": round(d.conf, 2) if d else 0.0,
-                 "dir_ok": ok}
+                 "dir_ok": ok,
+                 # who said it: a name the duck has met, or None (someone it does not know, or too short)
+                 "speaker": (who or {}).get("speaker"), "speaker_score": (who or {}).get("score")}
+        if who and who.get("met"):
+            where["met"] = who["met"]                          # just introduced themselves
         named, rest = named_in(text)
         if not named:
             rest = text.strip(" ,.!?~")
@@ -223,7 +249,12 @@ class Ears:
                 self.addressed_until = now + ADDRESSED_S     # a conversation keeps the window open
         side = (f"  from {np.degrees(d.yaw):+.0f} deg (or {np.degrees(d.yaw_back):+.0f}), conf {d.conf:.2f}"
                 + ("" if ok else " - unsure") if d else "")
-        log(f"heard: {text!r}{'  [to me]' if named or addressed else ''}{side}")
+        voice = ""
+        if who and who.get("met"):
+            voice = f"  - met {who['met']}"
+        elif who and who.get("score") is not None:
+            voice = f"  - {who['speaker'] or 'unknown voice'} ({who['score']:.2f})"
+        log(f"heard: {text!r}{'  [to me]' if named or addressed else ''}{side}{voice}")
 
     def worker(self, q):
         rec = None
@@ -231,9 +262,14 @@ class Ears:
             try:
                 rec = make_recognizer(self.a.models)
             except Exception as e:  # noqa: BLE001 - retry rather than die
-                log(f"SenseVoice failed to load, retrying in 5 s: {e!r}"[:120])
+                log(f"Moonshine failed to load, retrying in 5 s: {e!r}"[:120])
                 time.sleep(5)
-        log("SenseVoice ready")
+        try:
+            people = make_voices(self.a.models)
+        except Exception as e:  # noqa: BLE001 - the words matter more than who said them
+            log(f"voice prints failed to load: {e!r}"[:160])
+            people = None
+        log(f"Moonshine ready{'' if people is None else f', voice prints of {len(people.people)} people'}")
         while True:
             samples, dn_rms, st, noise = q.get()
             rms = float(np.sqrt((samples ** 2).mean()))
@@ -259,7 +295,13 @@ class Ears:
                                       noise=(noise[:, 0], noise[:, 1]) if len(noise) >= int(0.1 * FS_IN) else None)
                 except Exception as e:  # noqa: BLE001 - a direction is a bonus; the words still count
                     log(f"direction failed: {e!r}")
-            self.heard(text, d)
+            who = None
+            if people is not None:
+                try:
+                    who = people.hear(samples, text)
+                except Exception as e:  # noqa: BLE001 - who said it is a bonus; the words still count
+                    log(f"voice print failed: {e!r}")
+            self.heard(text, d, who)
 
     def keep_clock(self):
         """Hold the shared 48 kHz stream open with silence: the codec's playback and capture share
@@ -287,8 +329,9 @@ class Ears:
         # (stereo.Decimator) for VAD and ASR - no ALSA plug resampling in between
         cmd = ["arecord", "-D", self.a.mic, "-f", "S16_LE", "-r", str(FS_IN), "-c", "2", "-t", "raw", "-B", "800000", "-q"]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        denoiser = make_denoiser(self.a.models)
-        log(f"listening on {self.a.mic} (VAD{' on denoised audio' if denoiser else ''} + SenseVoice, name {NAME})")
+        denoiser = make_denoiser(self.a.models, self.a.denoiser)
+        log(f"listening on {self.a.mic} (VAD{f' on {self.a.denoiser}-denoised audio' if denoiser else ''} + Moonshine,"
+            f" name {NAME})")
         buf = np.zeros(0, dtype=np.float32)
         hist = Recent(int(HISTORY_S * 16000))
         ring, dec = Ring(int(STEREO_S * FS_IN)), Decimator()
@@ -346,14 +389,19 @@ class Ears:
 
 
 def main():
+    global LIFED
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mic", default="duck_in", help="capture device (/etc/asound.conf's dsnoop)")
     ap.add_argument("--keep-alive", default="duck_out",
                     help="playback device held open with silence to keep the codec clock running ('' = off)")
-    ap.add_argument("--models", default=os.path.expanduser("~/models/asr-sensevoice"))
+    ap.add_argument("--models", default=os.path.expanduser("~/models/hearing"))
+    ap.add_argument("--denoiser", choices=sorted(DENOISERS), default="dpdfnet",
+                    help="the denoiser in front of the VAD (the ASR always hears the raw audio)")
     ap.add_argument("--pga", type=int, default=PGA_CAPTURE, help="codec capture gain (0-119); -1 leaves it")
+    ap.add_argument("--lifed", default=LIFED, help="lifed's socket, where what is heard goes")
     ap.add_argument("--wav")
     a = ap.parse_args()
+    LIFED = a.lifed
     if a.pga is not None and a.pga < 0:
         a.pga = None
     if a.wav:
@@ -362,6 +410,10 @@ def main():
             pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
         t0 = time.time()
         print(transcribe(make_recognizer(a.models), pcm), f"({time.time() - t0:.2f} s)")
+        people = make_voices(a.models)
+        if people is not None:
+            who, score = people.match(people.embed(pcm))
+            print(f"voice: {who or 'nobody known'} ({score:.2f})")
         return
     Ears(a).run()
 
