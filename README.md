@@ -201,9 +201,9 @@ flowchart LR
 | Step | Where | Status |
 |---|---|---|
 | 1. Get the parts | the parts list below | ✅ list · 🚧 shop links coming |
-| 2. Print | [hardware/print](hardware/print/README.md): Bambu Studio project `DuckBuddy.3mf`, 6 plates, PETG + TPU, settings included. Optional open development head for the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT): [hardware/cad/open-head](hardware/cad/open-head/README.md); optional LiPo plate with the BNO055 mount: [hardware/cad/lipo-plate](hardware/cad/lipo-plate/README.md) | ✅ |
+| 2. Print | [hardware/print](hardware/print/README.md): Bambu Studio project `DuckBuddy.3mf`, 6 plates, PETG + TPU, settings included. Optional open development head for the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT): [hardware/cad/open-head](hardware/cad/open-head/README.md); optional LiPo plate and BNO055 mount: [hardware/cad/lipo-plate](hardware/cad/lipo-plate/README.md) | ✅ |
 | 3. Carrier board | the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT): schematic, PCB and production files in its repo; for a 3S battery replace D5 with an SMBJ15A first ([guide](https://code.caric.io/Robotics/elec_RPI_Robot_HAT/src/branch/main/docs/12V_battery_swap.md)). Pinout, power and bus as used here: [docs/hardware/INTERFACE-CN.md](docs/hardware/INTERFACE-CN.md) | ✅ |
-| 4. Body IMU | a BNO055 breakout (Adafruit 4646) on the [LiPo plate](hardware/cad/lipo-plate/README.md), on a Qwiic cable to the HAT's J5. Nothing to flash | ✅ |
+| 4. Body IMU | a BNO055 breakout (Adafruit 4646) on its mount on the rear hip servos ([hardware/cad/lipo-plate](hardware/cad/lipo-plate/README.md)), on a Qwiic cable to the HAT's J5. Nothing to flash | ✅ |
 | 5. Set up the Orange Pi | [deploy/brain](deploy/brain/README.md): `deploy/brain/deploy.sh <user@host> --install` from your computer sets up the board (codec driver, audio, servo UART, I²C buses, camera) and installs the services; robot config [deploy/robots/opi-hl2915-robothat-e1.toml](deploy/robots/opi-hl2915-robothat-e1.toml) | ✅ |
 | 6. Servos, zero pose, whole-robot test | [tools/bringup](tools/bringup/README.md): a web workbench on your computer - servo IDs, joint mapping, zero calibration, IMU firmware, self-test, each page with a guide. New servos are set up on a Raspberry Pi test bench with a second Robot HAT E1, in place of the Feetech USB board (`--bench`) | ✅ |
 | 7. Policies | trained policies ship in the repo; to train your own see [training](training) | ✅ |
@@ -218,7 +218,7 @@ flowchart LR
 | Feetech HL-2915 servo | 15 | the 3S version; 2 × 5 in the legs, 5 in the head (neck, head, beak). Microduck's printed parts fit as is, M2×6 self-tapping screws |
 | Orange Pi Zero 3W | 1 | the 4 GB version recommended |
 | [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) | 1 | in the head, on the Orange Pi's 40-pin header; it takes the battery and feeds the servos. D5 swapped to an SMBJ15A for 3S |
-| BNO055 breakout (Adafruit 4646) | 1 | the body IMU, on the [LiPo plate](hardware/cad/lipo-plate/README.md), with a Qwiic cable (about 30 cm) to the HAT's J5 |
+| BNO055 breakout (Adafruit 4646) | 1 | the body IMU, on its mount on the rear hip servos ([hardware/cad/lipo-plate](hardware/cad/lipo-plate/README.md)), with a Qwiic cable (about 30 cm) to the HAT's J5 |
 | [Radxa Camera 8M 219](https://docs.radxa.com/en/cubie/a7z/accessories/camera-8m-219) (IMX219) | 1 | MIPI CSI, in the face, on the [face plate](hardware/cad/face-plate/README.md) made for it |
 | [SparkFun Qwiic Mini ToF Imager - VL53L5CX](https://www.sparkfun.com/sparkfun-qwiic-mini-tof-imager-vl53l5cx.html) | 1 | 8×8 ToF, in the face on the [face plate](hardware/cad/face-plate/README.md), Qwiic cable to the HAT's J8 |
 | 1 W LED emitter | 1 | optional, a light in the face on the [face plate](hardware/cad/face-plate/README.md); needs a current limit |
@@ -259,7 +259,7 @@ flowchart LR
 | `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `duckbrain`, `persona`, the bring-up workbench `bringup`, the Mac simulator `sim`, robot test scripts |
 | `firmware/imu-feetech` | the IMU board's firmware (STM32G031 + LSM6DSV16X, speaks the Feetech protocol) |
 | `training/` | HL-2915 tasks, actuator identification (BAM), evaluation scripts, trained policies |
-| `hardware/` | the print project (`hardware/print`), the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit), the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate (`hardware/cad/lipo-plate`, build123d), the servo dummy (`hardware/cad/servo-dummy`), the robot model used for training (`hardware/rev-a/mjcf`) |
+| `hardware/` | the print project (`hardware/print`), the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit), the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate and the BNO055 mount (`hardware/cad/lipo-plate`, build123d), the servo dummy (`hardware/cad/servo-dummy`), the robot model used for training (`hardware/rev-a/mjcf`) |
 | `docs/` | the hardware interface (`docs/hardware`), and Microduck's own design notes and guides |
 
 </details>

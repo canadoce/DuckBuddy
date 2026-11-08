@@ -12,17 +12,22 @@ MJLAB_DIR is the microduck-simulator folder app/public/robot/mjlab (default: the
 this repository). In the trunk frame (X forward, Y left, Z up, mm) it measures:
 
 - the plate against the trunk parts: no more overlap than the old plate has (it sits in the
-  shells' grooves); what the plate adds outside the old one's slab and top (the cup, the skirt,
-  the standoffs), the
-  LiPo and the BNO055 with its Qwiic plugs against the trunk parts: no overlap, and at least STATIC_MARGIN (LARGEST_MARGIN for the
-  largest pack the cup takes, 3 mm over the nominal size every way);
+  shells' grooves); what the plate adds outside the old one's slab, top and servo brackets (the
+  cup, the pad), the LiPo, the BNO055's mount and the BNO055 with its Qwiic plug against the trunk
+  parts: no overlap, and at least STATIC_MARGIN (LARGEST_MARGIN for the largest pack the cup takes,
+  3 mm over the nominal size every way; the mount and the BNO055 rest on the rear hip servos, whose
+  passive horns are left off, so only no overlap there), the mount at least MOUNT_GAP from the
+  plate and the BNO055 at least BOARD_STOP_GAP from the upper bracket's tabs behind it;
 - the path of the plate when it slides up into the shells, as the old one does;
 - the robot's policies in the simulation (tools/policy_poses.py: walking, getting up from lying,
   sitting down and up, the forward roll, under the stress conditions of the policy tests), with
   the old battery and with the LiPo plate's shape and masses: each skill must succeed at least as often with
-  the LiPo plate; in every pose of the LiPo plate's runs the legs and the head must keep
-  MOVING_MARGIN from the BNO055 (their nearest approach to the plate and the pack is reported:
-  the simulation has them touch the body there, as it has them touch the old battery);
+  the LiPo plate; in every pose of the LiPo plate's runs the head and the neck must keep
+  MOVING_MARGIN from the BNO055 and its mount, which only they can reach, through the shells' top
+  opening (the legs' nearest approach to them, through the shell walls, and the legs' and the
+  head's to the plate and the pack are reported: the simulation has them touch the body there, as
+  it has them touch the old battery). Poses that put the head or the neck more than SHELL_DEPTH
+  into the shells are left out: the simulation has no contact there, the real robot cannot go there;
 - for information, the legs and the head over the model's full joint ranges, most of which the
   robot never uses: the poses that keep MOVING_MARGIN from the old plate and the NP-F970 and do
   not run into the shells, the trunk floor or the locker, and how near they come to the new
@@ -53,18 +58,47 @@ REV_A = ROOT.parents[1] / "rev-a/mjcf/robot_allcollisions.xml"
 STATIC_MARGIN = 1.0
 MOVING_MARGIN = 3.0
 CONTACT = 0.5  # a moving part this close to the body is taken as running into it
+# The simulation has no contact between the head and the shells: a pose that puts the head or the
+# neck deeper than this inside a shell is one the real robot cannot reach, and is left out.
+SHELL_DEPTH = 1.0
 OLD = "old plate + NP-F970"
 LARGEST_MARGIN = 0.5  # the largest pack (+3 mm every way) only has to touch nothing
 FLOOR_MARGIN = 10.0
 OVERLAP_LIMIT = 0.5  # mm3
+MOUNT_GAP = 0.3  # the mount's arms beside the plate's upper bracket tabs (0.5 by design)
+BOARD_STOP_GAP = 0.1  # the BNO055's back edge to the upper bracket's tabs (0.2 by design)
 # The old plate's slab and the features at its top, as (x0, x1, y0, y1, z0, z1).
 SLAB = (-23.1, -20.9, -28.0, 28.0, -39.9, 40.0)
 TOP = (-31.5, -20.9, -28.0, 28.0, 31.0, 40.0)
+BRACKETS = [(-21.0, -13.9, -12.7, 12.7, -5.4, -1.1), (-21.0, -13.9, -12.7, 12.7, 23.0, 27.3)]
 
 LEGS = ("yaw2roll", "bearing_roll")
 HEAD = ("neck",)
 SIT = {"left_hip_pitch": -np.pi / 6, "left_knee": np.pi / 3, "right_hip_pitch": np.pi / 6, "right_knee": -np.pi / 3,
        "neck_pitch": 0.4992, "head_pitch": 1.6005}
+
+
+class ShellDepth:
+    """Tells whether points are inside a shell deeper than SHELL_DEPTH: farther than that from the
+    nearest of many surface samples, on the inner side of its face, and inside the closed mesh."""
+
+    def __init__(self):
+        shells = trimesh.util.concatenate([trimesh.load(bp.REF / f"{s}_shell_duckbuddy.stl") for s in ("left", "right")])
+        S, face = trimesh.sample.sample_surface_even(shells, 400000, radius=0.15, seed=1)
+        self.S, self.N, self.tree = S, shells.face_normals[face], cKDTree(S)
+        self.mesh = shells
+        self.lo, self.hi = shells.bounds
+
+    def deep(self, P):
+        P = P[np.all((P > self.lo) & (P < self.hi), axis=1)]
+        if not len(P):
+            return False
+        dist, j = self.tree.query(P, workers=-1)
+        far = dist > SHELL_DEPTH
+        cand = P[far][np.einsum("ij,ij->i", P[far] - self.S[j[far]], self.N[j[far]]) < 0]
+        # the normal side is only a quick filter (it misreads points near the shells' open edges):
+        # the few candidates are tested against the closed shell meshes
+        return bool(len(cand)) and bool(self.mesh.contains(cand).any())
 
 
 def pts(m, spacing):
@@ -125,8 +159,10 @@ def joint(m, name):
     return m.jnt_qposadr[j], m.jnt_range[j]
 
 
-def sweep(m, clouds, grid, trees, roi):
-    """For each pose of the grid, the nearest distance from the moving points to each tree."""
+def sweep(m, clouds, grid, trees, roi, shells=None):
+    """For each pose of the grid, the nearest distance from the moving points to each tree. A pose
+    "runs into the body" when a point comes within CONTACT of it or, with `shells`, more than
+    SHELL_DEPTH into the shells (for the head, whose neck passes close to the shells' opening)."""
     d = mujoco.MjData(m)
     tb = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "trunk_base")
     names = list(grid)
@@ -142,7 +178,7 @@ def sweep(m, clouds, grid, trees, roi):
         P = P[np.all((P > roi[0]) & (P < roi[1]), axis=1)]
         if not len(P):
             continue
-        if trees["body"].query(P, distance_upper_bound=CONTACT, workers=-1)[0].min() < CONTACT:
+        if shells.deep(P) if shells else trees["body"].query(P, distance_upper_bound=CONTACT, workers=-1)[0].min() < CONTACT:
             hits += 1
             continue
         if trees[OLD].query(P, distance_upper_bound=MOVING_MARGIN, workers=-1)[0].min() < MOVING_MARGIN:
@@ -168,20 +204,26 @@ def main():
     # against the locker by design, so only this is held to the clearances; the recreated slab and
     # top are held to the old plate's overlaps.
     old_region = bp.box(*SLAB) + bp.box(*TOP)
+    for b in BRACKETS:
+        old_region += bp.box(*b)
     pieces = bp.to_trimesh(bp.to_manifold(plate) - bp.to_manifold(old_plate) - old_region).split(only_watertight=False)
     adds = trimesh.util.concatenate([q for q in pieces if q.volume > 0.5])
     parts = bp.load_parts()
     lipo = parts["lipo"]
     big = trimesh.creation.box(bounds=np.array(p.lipo_box(p.LIPO_TOL)).reshape(3, 2).T)
     bno = trimesh.util.concatenate([parts["bno055_pcb"], parts["bno055_parts"], parts["qwiic_plug"]])
+    mount = trimesh.load(bp.TMP / "imu_mount.stl")
     old = trimesh.util.concatenate([old_plate,
                                     trimesh.load(next(bp.REF.glob("np_f970__*.stl")))])
-    fixed = {f.stem.removesuffix("_duckbuddy"): trimesh.load(f) for f in bp.fixed_parts()}
+    fixed = {f.stem.removesuffix("_duckbuddy"): bp.load_fixed(f) for f in bp.fixed_parts()}
     fails = []
     print(f"lipo_plate: bounds {np.round(plate.bounds, 1).tolist()}, watertight {plate.is_watertight}, "
           f"volume {plate.volume / 1000:.1f} cm3")
 
-    print("\n-- new parts, LiPo and BNO055 against the trunk parts (overlap must be 0)")
+    print(f"imu_mount: bounds {np.round(mount.bounds, 1).tolist()}, watertight {mount.is_watertight}, "
+          f"volume {mount.volume / 1000:.2f} cm3")
+
+    print("\n-- new parts, LiPo, BNO055 and its mount against the trunk parts (overlap must be 0)")
     old_v = {k: overlap(old_plate, f) for k, f in fixed.items()}
     print("  the whole plate against the trunk parts, overlap new / old (the old plate's contact faces):")
     for k, f in fixed.items():
@@ -191,21 +233,29 @@ def main():
             print(f"    {k:40s} {v:6.2f} / {old_v[k]:6.2f} mm3" + ("  <-- FAIL" if bad else ""))
             if bad:
                 fails.append(f"plate overlaps {k} by {v:.2f} mm3 (old plate {old_v[k]:.2f})")
-    held = {"new parts": adds, "lipo": lipo, "lipo, largest": big, "bno055 + plugs": bno}
+    held = {"new parts": adds, "lipo": lipo, "lipo, largest": big, "imu mount": mount, "bno055 + plug": bno}
     for name, a in held.items():
         A = pts(a, 0.2)
         for fname, f in fixed.items():
             dmin = cKDTree(pts(f, 0.2)).query(A, workers=-1)[0].min()
             v = overlap(a, f)
             if dmin < 5 or (v or 0) > 0:
-                bad = (v or 0) > OVERLAP_LIMIT or dmin < (LARGEST_MARGIN if a is big else STATIC_MARGIN)
+                need = LARGEST_MARGIN if a is big else 0.0 if (a is mount or a is bno) and fname.startswith("xl330") else STATIC_MARGIN
+                bad = (v or 0) > OVERLAP_LIMIT or dmin < need
                 note = "not a closed mesh, distance only" if v is None else f"overlap {v:.2f} mm3"
                 print(f"  {name:15s} vs {fname:40s} {dmin:5.2f} mm, {note}" + ("  <-- FAIL" if bad else ""))
                 if bad:
                     fails.append(f"{name} vs {fname}: {dmin:.2f} mm, {note}")
     dl = cKDTree(pts(big, 0.3)).query(pts(plate, 0.3), workers=-1)[0].min()
-    db = cKDTree(pts(bno, 0.2)).query(pts(plate, 0.2), workers=-1)[0].min()
-    print(f"  largest LiPo to the plate {dl:.2f} mm, BNO055 to the plate {db:.2f} mm (both rest on it)")
+    db = cKDTree(pts(bno, 0.2)).query(pts(mount, 0.2), workers=-1)[0].min()
+    dm = cKDTree(pts(plate, 0.1)).query(pts(mount, 0.1), workers=-1)[0].min()
+    dbp = cKDTree(pts(plate, 0.2)).query(pts(bno, 0.2), workers=-1)[0].min()
+    print(f"  largest LiPo to the plate {dl:.2f} mm, BNO055 to its mount {db:.2f} mm (both rest on them)")
+    bad = dm < MOUNT_GAP or dbp < BOARD_STOP_GAP
+    print(f"  mount to the plate {dm:.2f} mm (need {MOUNT_GAP}), BNO055 to the plate {dbp:.2f} mm (need {BOARD_STOP_GAP}: "
+          "the upper bracket's tabs keep it from sliding back)" + ("  <-- FAIL" if bad else ""))
+    if bad:
+        fails.append(f"mount {dm:.2f} mm / BNO055 {dbp:.2f} mm from the plate")
 
     print("\n-- sliding the plate up into the shells (as the old one goes in), new parts against the shells")
     shells = trimesh.util.concatenate([fixed["left_shell"], fixed["right_shell"]])
@@ -224,7 +274,8 @@ def main():
     # body" means reaching the shells, the trunk floor or the locker.
     body = trimesh.util.concatenate([f for k, f in fixed.items() if not k.startswith(("xl330", "seeed"))])
     trees = {"body": cKDTree(pts(body, 0.5)), "new parts": cKDTree(pts(adds, 0.5)),
-             "lipo": cKDTree(pts(big, 0.5)), "bno055": cKDTree(pts(bno, 0.3)), OLD: cKDTree(pts(old, 0.5))}
+             "lipo": cKDTree(pts(big, 0.5)),
+             "bno055 + mount": cKDTree(pts(trimesh.util.concatenate([bno, mount]), 0.3)), OLD: cKDTree(pts(old, 0.5))}
 
     policy_motion(m, d, trees, fails)
 
@@ -243,15 +294,15 @@ def main():
         print(f"  {side} leg ({hits} poses run into the body, {near} come within {MOVING_MARGIN:.0f} mm of the old parts; left out):")
         report(worst, None, f"{side} leg")
 
-    print("\n-- for information: head over its full joint ranges (poses that run into the body are left out)")
+    print("\n-- for information: head over its full joint ranges (poses that put it over 1 mm into the shells are left out)")
     head = subtree(m, HEAD)
     clouds = body_clouds(m, d, head, 1.5)
     g = {}
     for j, n in (("neck_pitch", 11), ("head_pitch", 13), ("head_yaw", 7), ("head_roll", 3)):
         lo, hi = joint(m, j)[1]
         g[j] = np.linspace(lo, hi, n)
-    worst, hits, near = sweep(m, clouds, g, trees, (np.array([-90, -60, -70]), np.array([0, 60, 200])))
-    print(f"  head ({hits} poses run into the body, {near} come within {MOVING_MARGIN:.0f} mm of the old parts; left out):")
+    worst, hits, near = sweep(m, clouds, g, trees, (np.array([-90, -60, -70]), np.array([40, 60, 200])), ShellDepth())
+    print(f"  head ({hits} poses go into the shells, {near} come within {MOVING_MARGIN:.0f} mm of the old parts; left out):")
     report(worst, None, "head")
 
     print("\n-- floor (the robot model settled in its sit pose, and standing upright at home)")
@@ -278,7 +329,8 @@ def main():
 
 def policy_motion(m, d, trees, fails):
     """The policies' scores with the old battery and with the LiPo plate, and the legs and the head
-    in every pose of the LiPo plate's runs against the BNO055 (and, reported, the plate and pack)."""
+    in every pose of the LiPo plate's runs against the BNO055 and its mount (and, reported, the
+    plate and pack)."""
     runs = {k: np.load(bp.TMP / f"policy_poses_{k}.npz") for k in ("stock", "lipo")}
     print("\n-- the policies in the simulation: successes with the old battery / with the LiPo plate")
     for skill in dict.fromkeys(runs["stock"]["scores"][:, 0]):
@@ -293,27 +345,43 @@ def policy_motion(m, d, trees, fails):
     adr = [joint(m, n)[0] for n in names]
     tb = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "trunk_base")
     clouds = body_clouds(m, d, subtree(m, LEGS + HEAD), 1.2)
-    roi = (np.array([-90, -60, -120]), np.array([0, 60, 200]))
+    head = subtree(m, HEAD)
+    roi = (np.array([-90, -60, -120]), np.array([40, 60, 200]))
     print("\n-- legs and head in the poses of the LiPo plate's runs (every 2nd control tick)")
     keys = {k: t for k, t in trees.items() if k not in ("body", OLD)}
+    shells = ShellDepth()
     for skill in dict.fromkeys(rec["scores"][:, 0]):
         worst = {k: (np.inf, None) for k in keys}
         q = rec[skill][::2]
+        unreal = 0
+        legs_mount = np.inf
         for row in q:
             d.qpos[:] = m.qpos0
             d.qpos[adr] = row
             mujoco.mj_kinematics(m, d)
             Rt, pt = d.xmat[tb].reshape(3, 3), d.xpos[tb]
-            P = np.vstack([(c @ d.xmat[b].reshape(3, 3).T + d.xpos[b] - pt) @ Rt for b, c in clouds.items()]) * 1000
+            by = {b: (c @ d.xmat[b].reshape(3, 3).T + d.xpos[b] - pt) @ Rt * 1000 for b, c in clouds.items()}
+            P = np.vstack(list(by.values()))
             P = P[np.all((P > roi[0]) & (P < roi[1]), axis=1)]
+            H = np.vstack([v for b, v in by.items() if b in head])
+            if shells.deep(H):
+                unreal += 1
+                continue
             for k, t in keys.items():
-                dist, j = t.query(P, distance_upper_bound=min(worst[k][0], 30.0), workers=-1)
+                # the BNO055 and its mount are closed in by the shells, the servos and the plate; only
+                # the head and the neck come in, through the shells' top opening (the legs' nearest
+                # approach, through the shell walls, is reported apart)
+                Q = H if k == "bno055 + mount" else P
+                dist, j = t.query(Q, distance_upper_bound=min(worst[k][0], 30.0), workers=-1)
                 j = np.argmin(dist)
                 if dist[j] < worst[k][0]:
                     worst[k] = (dist[j], (dict(zip(names, np.round(np.degrees(row)).astype(int).tolist())),
-                                          np.round(P[j], 1).tolist()))
-        print(f"  {skill} ({len(q)} poses):")
+                                          np.round(Q[j], 1).tolist()))
+            L = np.vstack([v for b, v in by.items() if b not in head])
+            legs_mount = min(legs_mount, keys["bno055 + mount"].query(L, workers=-1)[0].min())
+        print(f"  {skill} ({len(q)} poses, {unreal} left out: the head or the neck over {SHELL_DEPTH:.0f} mm into the shells):")
         report(worst, fails, f"{skill}", info=("new parts", "lipo"))
+        print(f"    (legs to the BNO055 and its mount, through the shell walls: {legs_mount:.2f} mm)")
 
 
 def report(worst, fails, what, info=()):

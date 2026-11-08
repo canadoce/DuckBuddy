@@ -52,9 +52,11 @@ standoffs are the same. Model, print
 files and assembly steps: [`hardware/cad/face-plate`](../cad/face-plate/README.md).
 
 **LiPo plate** (optional, not in `DuckBuddy.3mf`): replaces the battery plate (`power_support`) for a
-3S 2200 mAh LiPo (75 × 33 × 26 mm) held by one 27 mm velcro strap, with the BNO055 breakout (Adafruit
-4646) on its front face, just under the hip servos. It drops the old plate's NP-F970 holder and the
-front mounts of the PDB/IMU board. Model, print files and assembly steps:
+3S 2200 mAh LiPo (75 × 33 × 26 mm) held by one 27 mm velcro strap. It keeps the old plate's two
+brackets that screw it to the rear hip servos and drops its NP-F970 holder. A small separate frame
+holds the BNO055 breakout (Adafruit 4646) flat on the rear hip servos' tops, where the PDB/IMU board
+goes; it screws into their horn screw holes (the passive horns on these two servos are left off)
+and their outer top holes. Model, print files and assembly steps:
 [`hardware/cad/lipo-plate`](../cad/lipo-plate/README.md).
 
 **Servo dummy** (optional, not in `DuckBuddy.3mf`): a printed stand-in with the HL-2915's shape, holes
