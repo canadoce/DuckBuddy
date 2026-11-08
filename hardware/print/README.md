@@ -19,6 +19,9 @@
 
 Other slicers (OrcaSlicer, PrusaSlicer and so on) can also open the 3MF directly.
 
+Soles: the TPU soles print fine, but TPU 95A is hard. For softer soles (Shore 60A, cast polyurethane), the
+feet and soles are exported as STEP/STL with a drawing and a quote request in [`../feet/`](../feet/README.md).
+
 License: the parts come from Microduck (Apache-2.0), and the changes are also released under Apache-2.0.
 
 Change log:
