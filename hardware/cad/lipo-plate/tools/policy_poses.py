@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12,<3.13"
-# dependencies = ["mujoco", "onnxruntime", "numpy", "pillow", "imageio", "imageio-ffmpeg", "trimesh",
+# dependencies = ["mujoco", "onnxruntime", "numpy", "pillow", "imageio", "imageio-ffmpeg", "trimesh", "scipy", "manifold3d",
 #                 "better-actuator-models @ git+https://github.com/Rhoban/bam@62bd8ce12154340be97e06f7f41a0ca8f116d967"]
 # ///
 """Run the HL-2915 policies with the old battery and with the LiPo plate, and record their poses.
@@ -21,9 +21,10 @@ The scene is hardware/rev-a/mjcf/scene.xml with the Microduck meshes of MJLAB_DI
 microduck-simulator folder app/public/robot/mjlab, default: the one next to this repository).
 `stock` is the model as the policies were trained: the NP-F970 on the old plate. `lipo` takes the
 NP-F970 out of the collision model and puts in boxes for the largest LiPo, the cup, the pad, the
-rib, the plate's lower part and the BNO055 with its plug, so the legs and the floor meet the new
-shape. It also changes the trunk's mass (`lipo_trunk_inertial`) and shows the plate, the pack and
-the board in place of the old plate and the NP-F970 (for videos, tools/policy_videos.py).
+rib and the plate's lower part, so the legs and the floor meet the new shape (the BNO055 and its
+mount are inside the body, on the hip servos: checks/fit_check.py measures the head and the legs
+against them). It also changes the trunk's mass (`lipo_trunk_inertial`) and shows the plate, the pack and
+the board and its mount in place of the old plate and the NP-F970 (for videos, tools/policy_videos.py).
 """
 
 import argparse
@@ -57,9 +58,9 @@ TRUNK_INERTIAL = '<inertial pos="-0.01945772 -2.407926e-05 0.003765416" mass="0.
 # The trunk's mass in the model (hardware/rev-a/mjcf/mjcf_mass.py) holds the battery the robot was
 # weighed with, a 3S 1500 mAh LiPo of 119.6 g, in the NP-F970's place (its box, mm), and the old
 # plate. The LiPo plate's trunk takes them out and puts in the OVONIC pack (nominal size, on the
-# pad), the new plate and the BNO055 with its plug and the end of its cable.
+# pad), the new plate, the BNO055's mount and the BNO055 with its plug and the end of its cable.
 OLD_BATTERY = (0.1196, (-46.8, -25.1, -19.3, 19.3, -39.4, 31.7))
-NEW_BATTERY_KG = 0.139
+NEW_BATTERY_KG = 0.142  # the OVONIC pack, weighed (139 g on its label)
 PETG_KG_M3 = 1270.0  # the plates are 1.2 to 3.6 mm thick: walls all through, taken as solid
 BNO055_KG = 0.003
 NP_F970_COLLISION = '<geom type="mesh" class="collision" pos="-0.0359693 0 -0.00385049" ' \
@@ -71,20 +72,26 @@ def lipo_boxes():
     sys.path.insert(0, str(ROOT / "src"))
     import plate_params as p
 
-    y0, z0 = p.BNO_CENTER
-    w, h = p.BNO_BOARD
     xb = p.CUP_IN_X - p.LIP_T
-    x_pcb = p.PLATE_FRONT_X + p.STANDOFF_H
     return {
         "lipo": p.lipo_box(p.LIPO_TOL),
         "cup": (xb, p.PLATE_BACK_X, -p.PAD_Y, p.PAD_Y, p.PLATE_BOTTOM_Z, p.FLOOR_TOP_Z + p.LIP_H),
         "pad": (p.REST_X, p.PLATE_BACK_X, -p.PAD_Y, p.PAD_Y, p.PLATE_BOTTOM_Z, p.CHANNEL_Z1 + p.CHANNEL_WALL),
         "rib": (p.REST_X, p.PLATE_BACK_X, -p.RIB_Y, p.RIB_Y, *p.RIB_Z),
         "plate_lower": (p.PLATE_BACK_X, p.PLATE_FRONT_X, -p.PLATE_EDGE_Y, p.PLATE_EDGE_Y, p.PLATE_BOTTOM_Z, -40.0),
-        "bno055": (p.PLATE_FRONT_X, x_pcb + p.BNO_PARTS_H, y0 - w / 2, y0 + w / 2, z0 - h / 2, z0 + h / 2),
-        "qwiic": (x_pcb + p.PCB_T, x_pcb + p.PCB_T + p.QWIIC_H, y0 - p.QWIIC_W / 2, y0 + p.QWIIC_W / 2,
-                  z0 - h / 2 - p.QWIIC_OUT, z0 - h / 2),
     }
+
+
+def bno_boxes():
+    """The BNO055 (board and parts as one box) and its Qwiic plug on the mount, in the trunk frame (mm)."""
+    sys.path.insert(0, str(ROOT / "src"))
+    import plate_params as p
+
+    x0, y0, z0 = p.bno_center()
+    w, d = p.BNO_BOARD
+    zp = z0 + p.PCB_T
+    return {"bno055": (x0 - d / 2, x0 + d / 2, y0 - w / 2, y0 + w / 2, z0, zp + p.BNO_PARTS_H),
+            "qwiic": (x0 - p.QWIIC_W / 2, x0 + p.QWIIC_W / 2, y0 + w / 2, y0 + w / 2 + p.QWIIC_OUT, zp, zp + p.QWIIC_H)}
 
 
 def inertia_about_origin(m, c, I):
@@ -112,7 +119,8 @@ def mesh_part(path):
 
 
 def lipo_trunk_inertial():
-    """The trunk's <inertial> with the LiPo plate, the pack and the BNO055 in place of the old ones."""
+    """The trunk's <inertial> with the LiPo plate, the pack, the BNO055 and its mount in place of
+    the old plate and battery."""
     sys.path.insert(0, str(ROOT / "src"))
     import plate_params as p
 
@@ -120,12 +128,9 @@ def lipo_trunk_inertial():
     ixx, iyy, izz, ixy, ixz, iyz = 0.000125285, 0.000155157, 0.00013248, 5.01721e-08, -2.4107e-05, 1.17083e-07
     total = inertia_about_origin(m0, c0, [[ixx, ixy, ixz], [ixy, iyy, iyz], [ixz, iyz, izz]])
     mass, moment = m0, m0 * c0
-    x0 = p.PLATE_FRONT_X + p.STANDOFF_H
-    y0, z0 = p.BNO_CENTER
     parts = [(-1, box_part(*OLD_BATTERY)), (+1, box_part(NEW_BATTERY_KG, p.lipo_box(0.0))),
              (-1, mesh_part(ROOT / "reference/power_support_duckbuddy.stl")), (+1, mesh_part(ROOT / "tmp/lipo_plate.stl")),
-             (+1, box_part(BNO055_KG, (x0, x0 + p.PCB_T + p.BNO_PARTS_H, y0 - p.BNO_BOARD[0] / 2,
-                                       y0 + p.BNO_BOARD[0] / 2, z0 - p.BNO_BOARD[1] / 2, z0 + p.BNO_BOARD[1] / 2)))]
+             (+1, mesh_part(ROOT / "tmp/imu_mount.stl")), (+1, box_part(BNO055_KG, bno_boxes()["bno055"]))]
     for sign, (m, c, I) in parts:
         total += sign * inertia_about_origin(m, c, I)
         mass += sign * m
@@ -137,18 +142,46 @@ def lipo_trunk_inertial():
 
 
 def lipo_visuals():
-    """Visual geoms of the plate (its mesh), the pack (nominal size) and the BNO055 with its plug."""
+    """Visual geoms of the plate and the BNO055's mount (their meshes), the pack (nominal size) and
+    the BNO055 with its plug."""
     sys.path.insert(0, str(ROOT / "src"))
     import plate_params as p
 
     colours = {"lipo": "0.19 0.38 0.75 1", "bno055": "0.10 0.10 0.30 1", "qwiic": "0.86 0.86 0.86 1"}
-    boxes = dict(lipo_boxes(), lipo=p.lipo_box(0.0))
-    out = ['<geom type="mesh" class="visual" mesh="lipo_plate" rgba="0.16 0.16 0.16 1"/>']
+    boxes = dict(bno_boxes(), lipo=p.lipo_box(0.0))
+    out = ['<geom type="mesh" class="visual" mesh="lipo_plate" rgba="0.16 0.16 0.16 1"/>',
+           '<geom type="mesh" class="visual" mesh="imu_mount" rgba="0.90 0.47 0.16 1"/>']
     for name, colour in colours.items():
         x0, x1, y0, y1, z0, z1 = boxes[name]
         pos = " ".join(f"{v / 2000:.5f}" for v in (x0 + x1, y0 + y1, z0 + z1))
         size = " ".join(f"{abs(v) / 2000:.5f}" for v in (x1 - x0, y1 - y0, z1 - z0))
         out.append(f'<geom type="box" class="visual" pos="{pos}" size="{size}" rgba="{colour}"/>')
+    return out
+
+
+HIP_SERVO_VISUAL = 'quat="0 0.707107 -0 0.707107" mesh="xl330" material="xl330_material"/>'
+HIP_SERVO_POS = ('pos="0.006 0.0175 0.0115"', 'pos="0.006 -0.0175 0.0115"')
+
+
+def hip_servo_without_horn(mjlab):
+    """The xl330 mesh as the rear hip servos use it, without the passive horn on their top (left
+    off on this robot, the BNO055's mount takes its place): tmp/xl330_no_horn.stl, in the mesh's
+    own frame (m)."""
+    import trimesh
+
+    sys.path.insert(0, str(ROOT / "src"))
+    import build_plate as bp
+
+    mesh = trimesh.load(Path(mjlab) / "meshes/xl330.stl")
+    T = np.eye(4)
+    T[:3, :3] = trimesh.transformations.quaternion_matrix([0, 0.707107, 0, 0.707107])[:3, :3]
+    T[:3, 3] = [0.006, 0.0175, 0.0115]
+    T = np.diag([1000.0, 1000.0, 1000.0, 1.0]) @ T  # to the trunk frame, mm
+    mesh.apply_transform(T)
+    mesh = bp.without_horn(mesh)
+    mesh.apply_transform(np.linalg.inv(T))
+    out = ROOT / "tmp/xl330_no_horn.stl"
+    mesh.export(out)
     return out
 
 
@@ -172,8 +205,15 @@ def scene_with_meshes(mjlab, plate):
                 assert text.count(old) == 1, old
             text = text.replace(NP_F970_VISUAL, "").replace(PLATE_VISUAL, "\n      ".join(lipo_visuals()))
             text = text.replace(TRUNK_INERTIAL, lipo_trunk_inertial()[0])
-            text = text.replace("</asset>", f'  <mesh name="lipo_plate" file="{ROOT / "tmp/lipo_plate.stl"}" '
-                                            'scale="0.001 0.001 0.001"/>\n  </asset>', 1)
+            for pos in HIP_SERVO_POS:
+                old = f'{pos} {HIP_SERVO_VISUAL}'
+                assert text.count(old) == 1, old
+                text = text.replace(old, old.replace('mesh="xl330"', 'mesh="xl330_no_horn"'))
+            hip = hip_servo_without_horn(mjlab)
+            meshes = "".join(f'  <mesh name="{n}" file="{ROOT / f"tmp/{n}.stl"}" scale="0.001 0.001 0.001"/>\n'
+                             for n in ("lipo_plate", "imu_mount"))
+            meshes += f'  <mesh name="xl330_no_horn" file="{hip}"/>\n'
+            text = text.replace("</asset>", meshes + "  </asset>", 1)
         (dst / f.name).write_text(text)
     return dst / "scene.xml"
 

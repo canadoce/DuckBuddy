@@ -28,8 +28,8 @@ imu_source = "bno055"
 imu_i2c = "/dev/i2c-0"
 imu_i2c_address = 40
 # Placeholder until measured: the sensor's own axes as the trunk's (x forward, y left, z up).
-# On the LiPo plate (hardware/cad/lipo-plate) the board stands upright with its chip facing
-# forward, so expect the trunk's x to come from the sensor's z.
+# On its mount on the rear hip servos (hardware/cad/lipo-plate) the board lies flat, chip up,
+# so expect the trunk's z to come from the sensor's z.
 imu_axes = "x,y,z"
 imu_median = false
 position_kp = 16
