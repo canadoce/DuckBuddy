@@ -1,0 +1,3 @@
+# Build and check output (meshes, review GLB, snapshots)
+tmp/
+__pycache__/

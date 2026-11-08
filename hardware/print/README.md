@@ -2,7 +2,7 @@
 
 `DuckBuddy.3mf` is the Bambu Studio project of all the robot's printed parts, in 6 plates: shell parts, head, wheels, TPU soft parts, structural parts (including the head top shell with the added cooling holes and microphone holes), and a BAM arm. The parts come from the original Microduck printed parts, with these changes:
 
-- **Head face plate (face_part)**: the mounts are changed to hold the **8×8 ToF module** (VL53L5CX type) and the **IMX219 camera module**;
+- **Head face plate (face_part)**: the mounts are changed to hold the **8×8 ToF module** (VL53L5CX type) and the **IMX219 camera module**. The plate for the **Radxa Camera 8M 219** (32 × 32 mm board) and the **SparkFun Qwiic Mini ToF Imager**, with a hole for a 1 W LED, is in [`hardware/cad/face-plate`](../cad/face-plate/README.md), not in the 3MF;
 - **Head shell (top_head_shell)**: **cooling holes** and **two microphone holes** added (one left, one right, matching J2/J9 on the HAT, used to tell which direction a sound comes from);
 - **BAM arm** (plate 6, new): a 120×20×3 mm flat plate. Two holes at one end mount it on the servo output horn. It swings on the servo during servo parameter identification ([BAM](https://github.com/Rhoban/bam)). You do not need to print it if you only build the robot;
 - All other parts (legs, hips, feet, body shell, battery tray and so on) are the original ones. The HL-2915 servos fit directly (same outer shape, hole positions and output shaft as the XL330, M2×6 self-tapping screws).
@@ -40,6 +40,13 @@ Plate 6 is a 120×20×3 mm arm for identifying the servos with BAM (not needed f
 shell and holds the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) beside the Orange Pi and the speaker, with the electronics exposed. Model,
 print files and assembly steps: [`hardware/cad/open-head`](../cad/open-head/README.md). It needs the three
 holes of the bottom head shell drilled to 3.2 mm for M3 screws.
+
+**Face plate for the Radxa camera, the SparkFun ToF and an LED** (not in `DuckBuddy.3mf`): the head's face
+plate with its sensor mounts changed for the Radxa Camera 8M 219 (IMX219, 32 × 32 mm board, 28 × 28 mm
+holes) and the SparkFun Qwiic Mini ToF Imager - VL53L5CX (25.4 × 12.7 mm board), in place of the plate
+in the 3MF, plus a seat and hole for a 1 W LED on the other side of the camera. The outline and the Pi
+standoffs are the same. Model, print
+files and assembly steps: [`hardware/cad/face-plate`](../cad/face-plate/README.md).
 
 **LiPo plate** (optional, not in `DuckBuddy.3mf`): replaces the battery plate (`power_support`) for a
 3S 2200 mAh LiPo (75 × 33 × 26 mm) held by one 27 mm velcro strap, with the BNO055 breakout (Adafruit

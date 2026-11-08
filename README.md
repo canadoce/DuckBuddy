@@ -219,8 +219,9 @@ flowchart LR
 | Orange Pi Zero 3W | 1 | the 4 GB version recommended |
 | [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT) | 1 | in the head, on the Orange Pi's 40-pin header; it takes the battery and feeds the servos. D5 swapped to an SMBJ15A for 3S |
 | BNO055 breakout (Adafruit 4646) | 1 | the body IMU, on the [LiPo plate](hardware/cad/lipo-plate/README.md), with a Qwiic cable (about 30 cm) to the HAT's J5 |
-| IMX219 camera module | 1 | MIPI CSI, in the face |
-| 8×8 ToF module (VL53L5CX) | 1 | in the face |
+| [Radxa Camera 8M 219](https://docs.radxa.com/en/cubie/a7z/accessories/camera-8m-219) (IMX219) | 1 | MIPI CSI, in the face, on the [face plate](hardware/cad/face-plate/README.md) made for it |
+| [SparkFun Qwiic Mini ToF Imager - VL53L5CX](https://www.sparkfun.com/sparkfun-qwiic-mini-tof-imager-vl53l5cx.html) | 1 | 8×8 ToF, in the face on the [face plate](hardware/cad/face-plate/README.md), Qwiic cable to the HAT's J8 |
+| 1 W LED emitter | 1 | optional, a light in the face on the [face plate](hardware/cad/face-plate/README.md); needs a current limit |
 | Small speaker | 1 | on the HAT's amplifier (J1) |
 | Electret microphones | 2 | left and right of the head, on the HAT's J2 and J9 |
 | 3S battery | 1 | LiPo 1500 mAh or LiHV 2800 mAh; robotd identifies it. XT60 plug |
