@@ -10,9 +10,9 @@
 # What it sets up (see README.md): the device tree overlay (codec, ToF bus, servo
 # UART), the TLV320AIC3104 kernel driver built for the running kernel, the mixer
 # setup, /etc/asound.conf, the battery guard, the camera program, the reboot fix,
-# device names and groups, the Python packages the DuckBuddy services use and
-# the NetworkManager permission for visiond. It also removes the earlier opi-robot-hat setup
-# (robot-hat-* services, /opt/robot-hat, the Cone Radio web app).
+# U-Boot's key wait (off), device names and groups, the Python packages the DuckBuddy
+# services use and the NetworkManager permission for visiond. It also removes the earlier
+# opi-robot-hat setup (robot-hat-* services, /opt/robot-hat, the Cone Radio web app).
 #
 # Safe to run again. Reboot afterwards: the overlay and the driver load at boot.
 set -euo pipefail
@@ -159,6 +159,14 @@ gcc -O2 -Wall -o /opt/brain/camera/camgrab.new /opt/brain/camera/camgrab.c \
 chmod 0755 /opt/brain/camera/camgrab.new
 mv -f /opt/brain/camera/camgrab.new /opt/brain/camera/camgrab
 ln -sfn /opt/brain/camera/camgrab /usr/local/bin/camgrab
+
+# ---- boot program ----------------------------------------------------------
+# U-Boot waits 1 s for a key on UART0, which is the servo bus: a servo holding the data line low
+# reads as a key press and stops the boot at U-Boot's prompt. Make it start Linux without waiting.
+# uboot_nowait.py saves the card's boot area in /var/backups/brain-uboot before it writes.
+say "boot program"
+python3 "$HERE/uboot_nowait.py" --backup-dir /var/backups/brain-uboot \
+	|| echo "warning: the boot program was not changed (the reason is above); the rest of the setup goes on"
 
 # ---- groups and services ---------------------------------------------------
 say "groups for $USER_NAME"

@@ -29,6 +29,7 @@ After the first `--install`, reboot once (`sudo reboot`): the overlay and the co
 | Battery guard | INA226 on the HAT: warns, then shuts the board down at 9.9 V (3S) | `/opt/brain/battery_guard.py`, `brain-battery-guard.service` |
 | Camera | vin modules at boot; `camgrab` with the IMX219 tuning file | `/etc/modules-load.d/brain-camera.conf`, `/opt/brain/camera` |
 | Reboot fix | the SD card's power is cut for 1 s on reboot, and switched back on until the PMIC reads it on (the card stays in 1.8 V mode otherwise and the board does not come back; the fan, on the same switch, pauses). A board that still stays off after a reboot needs a power cycle | `/usr/lib/systemd/system-shutdown/sd-card-power-cycle` |
+| Boot program | U-Boot starts Linux without waiting for a key on the servo bus (`bootdelay=-2` in its built-in settings), so a servo that holds the data line low no longer stops the boot. The card's boot area is saved first. See [Boot program](#boot-program) | `uboot_nowait.py` → the card's boot package (8 KiB × 2050), backup in `/var/backups/brain-uboot` |
 | Devices, groups | `/dev/duck-servos`, i2c / gpio groups; the user joins dialout, i2c, gpio, audio, video, netdev and robot (the daemons' sockets); lingering on | `/etc/udev/rules.d/99-brain.rules` |
 | Wi-Fi from a QR code | NetworkManager allowed for group netdev (polkit) | `/etc/polkit-1/rules.d/50-brain-nm.rules` |
 | Packages | Python numpy, OpenCV and pyserial (tools/bringup), FastAPI, uvicorn and soundfile (duckbrain), venv, build tools for the driver | |
@@ -40,6 +41,31 @@ Audio levels in `/etc/default/brain-audio` (then `sudo systemctl restart brain-a
 `BRAIN_PCM_VOLUME` (DAC, default 103 = −12 dB), `BRAIN_LOP_GAIN` (line out, default 0 dB),
 `BRAIN_MIC_GAIN` (mic PGA, default 72 = +36 dB). The speaker is on RIGHT_LOP; the onboard mic is on
 MIC2R and feeds both capture channels.
+
+## Boot program
+
+The image's U-Boot keeps its console on UART0, which is the servo bus, and waits one second for
+"any key" there before it starts Linux. A servo that holds the data line low (a faulty one does)
+reads as a key press: U-Boot stops at its prompt, the fan spins and the board never boots.
+U-Boot reads no saved settings on this image, so `uboot_nowait.py` changes its built-in
+`bootdelay=1` to `bootdelay=-2` (start at once, do not check for a key) and fixes U-Boot's own
+checksum and the package checksum. It changes only a U-Boot that holds exactly the expected settings, and
+does nothing when it is already changed.
+
+```bash
+sudo python3 deploy/brain/uboot_nowait.py --check   # on the board: is it changed?
+```
+
+To undo it, write the saved boot package back (on the board, or on the Mac with the card in a
+reader and `/dev/rdiskN` in place of `/dev/mmcblk1`):
+
+```bash
+sudo dd if=/var/backups/brain-uboot/boot-area-mmcblk1-<time>.img of=/dev/mmcblk1 bs=8k \
+    skip=2050 seek=2050 count=170 conv=fsync
+```
+
+Re-installing the bootloader from Orange Pi's tools (`orangepi-config`) also puts the original
+back; run `install.sh` again afterwards.
 
 ## What deploy.sh installs (the login user, no sudo)
 

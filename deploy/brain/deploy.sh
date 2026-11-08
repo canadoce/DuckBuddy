@@ -89,7 +89,8 @@ say "copying to $HOST"
 "${SSH[@]}" "$HOST" 'mkdir -p ~/robot/recs ~/lifed ~/voiced ~/visiond ~/duckweb ~/duckbrain ~/persona ~/.config/systemd/user ~/.config/duckbrain ~/duckbuddy-brain'
 
 if [ "$INSTALL" -eq 1 ]; then
-	"${RSYNC[@]}" "$REPO/deploy/brain/install.sh" "$REPO/deploy/brain/overlay" "$REPO/deploy/brain/rootfs" "$HOST:duckbuddy-brain/"
+	"${RSYNC[@]}" "$REPO/deploy/brain/install.sh" "$REPO/deploy/brain/uboot_nowait.py" "$REPO/deploy/brain/overlay" \
+		"$REPO/deploy/brain/rootfs" "$HOST:duckbuddy-brain/"
 	say "board setup (install.sh)"
 	"${SSH[@]}" -t "$HOST" 'cd ~/duckbuddy-brain && sudo ./install.sh'
 fi
