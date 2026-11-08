@@ -28,7 +28,7 @@ After the first `--install`, reboot once (`sudo reboot`): the overlay and the co
 | Audio | mixer levels and routing at boot, alsamixer works (`alsamixer -c aic3104`); shared devices `duck_out` (dmix) and `duck_in` (dsnoop) | `brain-audio-init`, `brain-audio.service`, `/etc/default/brain-audio`, `/etc/asound.conf` |
 | Battery guard | INA226 on the HAT: warns, then shuts the board down at 9.9 V (3S) | `/opt/brain/battery_guard.py`, `brain-battery-guard.service` |
 | Camera | vin modules at boot; `camgrab` with the IMX219 tuning file | `/etc/modules-load.d/brain-camera.conf`, `/opt/brain/camera` |
-| Reboot fix | the SD card's power is cut for 0.5 s on reboot (it stays in 1.8 V mode otherwise and the board does not come back) | `/usr/lib/systemd/system-shutdown/sd-card-power-cycle` |
+| Reboot fix | the SD card's power is cut for 1 s on reboot, and switched back on until the PMIC reads it on (the card stays in 1.8 V mode otherwise and the board does not come back; the fan, on the same switch, pauses). A board that still stays off after a reboot needs a power cycle | `/usr/lib/systemd/system-shutdown/sd-card-power-cycle` |
 | Devices, groups | `/dev/duck-servos`, i2c / gpio groups; the user joins dialout, i2c, gpio, audio, video, netdev and robot (the daemons' sockets); lingering on | `/etc/udev/rules.d/99-brain.rules` |
 | Wi-Fi from a QR code | NetworkManager allowed for group netdev (polkit) | `/etc/polkit-1/rules.d/50-brain-nm.rules` |
 | Packages | Python numpy, OpenCV and pyserial (tools/bringup), FastAPI, uvicorn and soundfile (duckbrain), venv, build tools for the driver | |
