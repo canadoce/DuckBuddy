@@ -13,7 +13,7 @@ the HAT, the speaker and the Pi, for review).
 
 How it is made:
 1. Branches (tapered tubes along smooth curves) grow from the three screw bosses to the
-   four HAT standoffs, the speaker tray and the face-plate collar. They are joined with
+   four HAT standoffs, the speaker ring and the face-plate rim. They are joined with
    smooth blends, as a distance field on a voxel grid.
 2. The field is carved away, with smooth edges, wherever it comes closer than the set
    clearance to the head parts: the neck parts swept over head roll and head yaw, the parts
@@ -45,8 +45,8 @@ import head_params as p  # noqa: E402
 BIG = np.float32(1e3)
 
 # Grid bounds (head frame).
-GRID_LO = np.array([-38.0, -48.0, -4.0])
-GRID_HI = np.array([80.0, 49.0, 44.0])
+GRID_LO = np.array([-38.0, -49.0, -7.0])
+GRID_HI = np.array([87.0, 49.0, 44.0])
 
 BLEND = 2.5        # smooth-union radius between branches
 CARVE_BLEND = 1.2  # smooth-subtraction radius of the clearance carving
@@ -66,7 +66,6 @@ EAR_TOP_Z = p.SPK_SEAT_Z + p.SPK_EAR_TOP - p.SPK_EAR_T
 DECK_Z = 19.3       # centre height of the deck branches
 COLUMN_R = p.BOSS_D / 2
 STANDOFF_TOP_R = 2.6
-COLLAR_SIDE_Z = 13.0  # the collar runs down the plate sides to here and merges into the legs
 
 BRANCHES = {
     # screw bosses: columns from below the contact plane up into the deck
@@ -101,9 +100,6 @@ BRANCHES = {
     # speaker ear bosses (cut flat under the ear flange)
     "ear_rear": [(EAR_X[0], EAR_Y, 16.5, 3.4), (EAR_X[0], EAR_Y, EAR_TOP_Z + 1.0, 3.0)],
     "ear_front": [(EAR_X[1], EAR_Y, 16.5, 3.4), (EAR_X[1], EAR_Y, EAR_TOP_Z + 1.0, 3.0)],
-    # legs from the front bosses up into the collar ends
-    "collar_leg_left": [(FL[0], FL[1], 11.0, COLUMN_R), (70.0, 43.5, 14.5, 3.0), (72.8, 45.2, 17.0, 2.6)],
-    "collar_leg_right": [(FR[0], FR[1], 11.0, COLUMN_R), (70.0, -43.5, 14.5, 3.0), (72.8, -45.2, 17.0, 2.6)],
 }
 
 # Speaker tray: a tube ring around the speaker's bottom edge. The pocket cut leaves a
@@ -214,19 +210,49 @@ def polygon_sdf(poly, U, V):
     return np.where(inside, -d, d)
 
 
-def collar_field(grid):
-    """A rounded band over the top edge of the face plate, lips on both faces."""
-    sl, X, Y, Z = grid.block((p.COLLAR_X[0] - 2, -50, COLLAR_SIDE_Z - 4), (p.COLLAR_X[1] + 2, 50, GRID_HI[2]))
-    s = polygon_sdf(face_outline(), Y, Z).astype(np.float32)  # (1, ny, nz)
-    uc = (p.COLLAR_OUT - p.COLLAR_LIP) / 2
-    hu = (p.COLLAR_OUT + p.COLLAR_LIP) / 2
-    vc = (p.COLLAR_X[0] + p.COLLAR_X[1]) / 2
-    hv = (p.COLLAR_X[1] - p.COLLAR_X[0]) / 2
-    rr = 1.6
-    qu = np.abs(s - uc) - (hu - rr)
-    qv = np.abs(X - vc) - (hv - rr)
-    d = np.sqrt(np.maximum(qu, 0) ** 2 + np.maximum(qv, 0) ** 2) + np.minimum(np.maximum(qu, qv), 0) - rr
-    d = smax(d, (COLLAR_SIDE_Z - Z) + 0 * d, 1.5)
+def arch_polyline(outline):
+    """The plate outline without its bottom edge: the sides and the top, as an open polyline
+    from one bottom corner to the other. The rim follows this; the jaw is under the bottom edge."""
+    n = len(outline)
+    for i in range(n):
+        a, b = outline[i], outline[(i + 1) % n]
+        if a[1] < p.OUTLINE_Z_MIN + 1 and b[1] < p.OUTLINE_Z_MIN + 1 and abs(a[0] - b[0]) > 20:
+            return np.vstack([outline[(i + 1 + k) % n] for k in range(n)])
+    raise ValueError("no bottom edge found in the face outline")
+
+
+def polyline_dist(line, U, V):
+    d = np.full(np.broadcast(U, V).shape, np.inf)
+    for a, b in zip(line[:-1], line[1:]):
+        e = b - a
+        t = np.clip(((U - a[0]) * e[0] + (V - a[1]) * e[1]) / (e @ e), 0, 1)
+        d = np.minimum(d, np.hypot(U - a[0] - t * e[0], V - a[1] - t * e[1]))
+    return d
+
+
+def rounded_rect(u, v, u0, u1, v0, v1, r):
+    """Signed distance to a rectangle [u0, u1] x [v0, v1] with corners rounded by r."""
+    uc, hu = (u0 + u1) / 2, (u1 - u0) / 2 - r
+    vc, hv = (v0 + v1) / 2, (v1 - v0) / 2 - r
+    qu = np.abs(u - uc) - hu
+    qv = np.abs(v - vc) - hv
+    return np.sqrt(np.maximum(qu, 0) ** 2 + np.maximum(qv, 0) ** 2) + np.minimum(np.maximum(qu, qv), 0) - r
+
+
+def rim_field(grid):
+    """The band around the plate's arched edge, in (s, X): s is the signed distance to the
+    arch in the plate plane (positive outside the plate). Back lip, outer wall over the slot,
+    and the brim in front, whose face is tilted like the original shell's front."""
+    outline = face_outline()
+    arch = arch_polyline(outline)
+    sl, X, Y, Z = grid.block((p.BACK_LIP_X[0] - 2, -50, GRID_LO[2]), (p.BRIM_X_MAX + 2, 50, GRID_HI[2]))
+    sign = np.where(polygon_sdf(outline, Y, Z) < 0, -1.0, 1.0)
+    s = (sign * polyline_dist(arch, Y, Z)).astype(np.float32)  # (1, ny, nz)
+    x1 = np.minimum(p.BRIM_X_BOTTOM + p.BRIM_SLOPE * (Z - p.OUTLINE_Z_MIN), p.BRIM_X_MAX)  # (1, 1, nz)
+    r = p.RIM_ROUND
+    d = rounded_rect(s, X, -p.BACK_LIP, p.RIM_OUT, p.BACK_LIP_X[0], p.BACK_LIP_X[1], r)
+    d = np.minimum(d, rounded_rect(s, X, p.RIM_GAP, p.RIM_OUT, p.BACK_LIP_X[0], x1, r))
+    d = np.minimum(d, rounded_rect(s, X, -p.FRONT_LIP, p.RIM_OUT, p.FACE_SLOT_X[1], x1, r))
     return sl, d.astype(np.float32)
 
 
@@ -245,15 +271,23 @@ def keepout_sets(parts):
     fixed = np.vstack([hm.surface_points(hm.ref(n)) for n in hm.FIXED_PARTS.values()])
     sets.append(("fixed parts", fixed, p.STATIC_MARGIN))
     sets.append(("roll servo", hm.surface_points(hm.ref(hm.ROLL_SERVO)), p.ROLL_SERVO_MARGIN))
-    sets.append(("face plate", hm.surface_points(hm.ref("face_part_duckbuddy"), 0.2), 0.4))
+    # the face plate's back features (Pi, camera, ToF and LED mounts); its faces are covered by the
+    # exact slot cut
+    face = hm.surface_points(hm.face_plate(), 0.2)
+    sets.append(("face plate back", face[face[:, 0] < p.FACE_SLOT_X[0]], p.RIM_GAP))
     pi = np.vstack([hm.surface_points(parts[k]) for k in ("pi", "pi_zone")])
     sets.append(("pi", pi, p.PI_MARGIN))
+    sets.append(("camera", hm.surface_points(parts["camera"]), p.CAM_MARGIN))
+    sets.append(("tof", hm.surface_points(parts["tof"], 0.2), p.CAM_MARGIN))
+    sets.append(("led", hm.surface_points(parts["led"], 0.2), p.CAM_MARGIN))
     sets.append(("hat parts", hm.surface_points(parts["hat_parts"], 0.2, cap=1500000), p.HAT_PARTS_MARGIN))
+    # the bottom shell, except where the shell sits on it: its boss tops and its edge around
+    # the face plate (the exact floor cut handles those)
     bottom = hm.surface_points(hm.ref("bottom_head_shell_duckbuddy"))
-    near_boss = np.zeros(len(bottom), bool)
+    seat = bottom[:, 0] > 55.0
     for x, y in (p.BOSS_BACK, *p.BOSS_FRONT):
-        near_boss |= np.hypot(bottom[:, 0] - x, bottom[:, 1] - y) < p.BOSS_D / 2 + 1.5
-    sets.append(("bottom shell", bottom[~near_boss], 0.3))
+        seat |= np.hypot(bottom[:, 0] - x, bottom[:, 1] - y) < p.BOSS_D / 2 + 1.5
+    sets.append(("bottom shell", bottom[~seat], 0.3))
     # the moving neck parts over the whole head-roll and head-yaw range
     above, below = hm.moving_meshes()
     A, Bp = hm.surface_points(above, 0.35), hm.surface_points(below, 0.35)
@@ -318,8 +352,12 @@ def to_trimesh(man):
 
 def exact_features(body):
     cut = []
-    # contact plane on the bottom shell's bosses
-    body = body ^ m_box(-100, 100, -100, 100, p.BOSS_Z0, 100)
+    # the floor: the contact plane on the bottom shell's bosses and back lip, stepping down
+    # across the plate slot to the bottom shell's lower front lip
+    floor = m3.CrossSection([[(-100, p.BOSS_Z0), (p.FLOOR_RAMP_X[0], p.BOSS_Z0), (p.FLOOR_RAMP_X[1], p.FLOOR_FRONT_Z),
+                              (200, p.FLOOR_FRONT_Z), (200, 100), (-100, 100)]])
+    # extrusion frame (a, b, c) = (X, Z, -Y) -> head frame
+    body = body ^ m3.Manifold.extrude(floor, 200).transform([[1, 0, 0, 0], [0, 0, -1, 100], [0, 1, 0, 0]])
     # back boss flattened in front of the roll servo
     cut.append(m_box(p.ROLL_SERVO_BACK_X - p.ROLL_SERVO_GAP, -15, -12, 12, -10, p.ROLL_SERVO_TOP_Z + 1.0))
     # M3 pilots with an entry chamfer, from below
@@ -343,8 +381,8 @@ def exact_features(body):
     cut.append(m_box(cx - WIRE_EXIT_W / 2, cx + WIRE_EXIT_W / 2, y0 - 8.0, y0 + 0.1, p.SPK_SEAT_Z, 100))
     for x in EAR_X:
         cut.append(m_cyl(x, EAR_Y, EAR_TOP_Z - p.M2_PILOT_DEPTH, EAR_TOP_Z + 0.1, p.M2_PILOT_D / 2))
-    # face plate slot in the collar, clear of the Pi's upper standoffs
-    cs = m3.CrossSection([face_outline().tolist()], m3.FillRule.NonZero).offset(p.COLLAR_GAP, m3.JoinType.Round)
+    # face plate slot in the rim, clear of the Pi's upper standoffs
+    cs = m3.CrossSection([face_outline().tolist()], m3.FillRule.NonZero).offset(p.RIM_GAP, m3.JoinType.Round)
     slot = m3.Manifold.extrude(cs, p.FACE_SLOT_X[1] - p.FACE_SLOT_X[0])
     # extrusion frame (a, b, c) = (Y, Z, X) -> head frame
     cut.append(slot.transform([[0, 0, 1, p.FACE_SLOT_X[0]], [1, 0, 0, 0], [0, 1, 0, 0]]))
@@ -364,7 +402,7 @@ def build(res):
     for name, pts in BRANCHES.items():
         add(grid, branch_field(grid, pts))
     add(grid, tray_ring_field(grid))
-    add(grid, collar_field(grid), 3.0)
+    add(grid, rim_field(grid), 3.0)
     print(f"frame field {time.time() - t0:.1f} s")
     sets = keepout_sets(parts)
     print(f"clearance sets {time.time() - t0:.1f} s")
@@ -386,17 +424,30 @@ def build(res):
         print(f"WARNING: the frame is in {1 + len(lost)} pieces; extra pieces {np.round(lost, 1).tolist()} mm3")
     body = pieces[0]
     shell = to_trimesh(body)
+    # zero-volume slivers can remain attached at a vertex: keep the one solid piece
+    chunks = sorted(shell.split(only_watertight=False), key=lambda q: -len(q.faces))
+    if len(chunks) > 1:
+        print(f"  dropped {len(chunks) - 1} mesh slivers ({sum(len(q.faces) for q in chunks[1:])} faces)")
+        shell = chunks[0]
     print(f"shell {len(shell.faces)} faces, volume {shell.volume / 1000:.1f} cm3, "
           f"bounds {np.round(shell.bounds, 1).tolist()}, watertight {shell.is_watertight} ({time.time() - t0:.1f} s)")
     return shell, 1 + len(lost)
 
 
 def write_review(shell, path):
+    """The shell with the boards, the camera and the speaker, plus the face plate and the
+    bottom shell for context, in one GLB for the CAD viewer."""
     scene = trimesh.load(hm.PARTS_GLB)
     s = shell.copy()
     s.apply_transform(hm.HEAD_TO_GLTF)
-    s.visual.face_colors = [232, 116, 44, 255]
+    s.visual = hm.plain_material(hm.REVIEW_SKELETON)
     scene.add_geometry(s, node_name="open_head_shell", geom_name="open_head_shell")
+    for name, m, color in (("face_plate", hm.face_plate(), hm.REVIEW_FACE),
+                           ("bottom_head_shell", hm.ref("bottom_head_shell_duckbuddy"), hm.REVIEW_MOUTH)):
+        m = m.copy()
+        m.apply_transform(hm.HEAD_TO_GLTF)
+        m.visual = hm.plain_material(color)
+        scene.add_geometry(m, node_name=f"reference_{name}", geom_name=f"reference_{name}")
     scene.export(path)
 
 

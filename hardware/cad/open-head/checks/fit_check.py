@@ -11,10 +11,11 @@ It measures, in the head frame (X forward, Y left, Z up, mm):
 - the shell against the parts it rests on or holds (bottom shell, face plate, HAT board,
   speaker): no overlap;
 - the shell against the parts fixed in the head, the Pi with its cooling shield and Dupont
-  plugs, and the parts under the HAT board: at least the clearances in head_params.py;
-- the shell, the HAT and the speaker against the neck parts that move under the head
-  (head roll +-25 deg in 1 deg steps, head yaw +-170 deg in 15 deg steps): at least 3 mm
-  for the shell and the speaker, 1 mm for the HAT (head_params.HAT_MOVING_MARGIN).
+  plugs, the camera, the ToF board, the LED and the parts under the HAT board: at least the clearances in
+  head_params.py;
+- the shell, the HAT, the speaker, the camera, the ToF and the LED against the neck parts that move under
+  the head (head roll +-25 deg in 1 deg steps, head yaw +-170 deg in 15 deg steps): at
+  least 3 mm, 1 mm for the HAT (head_params.HAT_MOVING_MARGIN).
 """
 
 import sys
@@ -34,6 +35,8 @@ CONTACT_DEPTH = 0.15  # mm: at a contact face the smoothed mesh may sit this far
 
 
 def manifold(m):
+    m = m.copy()
+    m.merge_vertices()  # GLB meshes come with split vertices
     man = m3.Manifold(m3.Mesh(vert_properties=np.asarray(m.vertices, np.float32),
                               tri_verts=np.asarray(m.faces, np.uint32)))
     return man if man.status() == m3.Error.NoError else None
@@ -85,7 +88,7 @@ def main():
     print("\n-- parts the shell rests on or holds: overlap must be 0")
     held = {
         "bottom_head_shell": hm.ref("bottom_head_shell_duckbuddy"),
-        "face_part": hm.ref("face_part_duckbuddy"),
+        "face_plate": hm.face_plate(),
         "hat_board": parts["hat_board"],
         "speaker": parts["speaker"],
     }
@@ -109,6 +112,9 @@ def main():
     keep["pi"] = (parts["pi"], p.PI_MARGIN)
     keep["pi_header_dupont_zone"] = (parts["pi_zone"], p.PI_MARGIN)
     keep["hat_parts"] = (parts["hat_parts"], p.HAT_PARTS_MARGIN)
+    keep["camera"] = (parts["camera"], p.CAM_MARGIN)
+    keep["tof"] = (parts["tof"], p.CAM_MARGIN)
+    keep["led"] = (parts["led"], p.CAM_MARGIN)
     for name, (m, need) in keep.items():
         P = hm.surface_points(m, 0.2, cap=1500000)
         d, _ = surf.query(P)
@@ -128,7 +134,8 @@ def main():
     above, below = hm.moving_meshes()
     A, B = hm.surface_points(above, 0.35), hm.surface_points(below, 0.35)
     hat = trimesh.util.concatenate([parts["hat_board"], parts["hat_parts"]])
-    clouds = {"shell": S, "hat": hm.surface_points(hat), "speaker": spk}
+    clouds = {"shell": S, "hat": hm.surface_points(hat), "speaker": spk, "camera": hm.surface_points(parts["camera"]),
+              "tof": hm.surface_points(parts["tof"]), "led": hm.surface_points(parts["led"])}
     trees = {k: cKDTree(v) for k, v in clouds.items()}
     worst = {k: (np.inf, 0.0, None) for k in clouds}
     for roll, P in hm.sweep(A, B, roll_step=1.0, yaw_step=15.0):
@@ -145,7 +152,8 @@ def main():
         need = p.HAT_MOVING_MARGIN if k == "hat" else p.MOVING_MARGIN
         bad = d < need
         where = f" at roll {roll:+.0f} deg near {np.round(at, 1).tolist()}" if at is not None else ""
-        print(f"  {k:8s} {d:5.2f} mm (need {need:.1f}){where}" + ("  <-- FAIL" if bad else ""))
+        shown = f"{d:5.2f}" if np.isfinite(d) else "  >20"
+        print(f"  {k:8s} {shown} mm (need {need:.1f}){where}" + ("  <-- FAIL" if bad else ""))
         if bad:
             fails.append(f"{k} vs moving neck parts: {d:.2f} mm")
 
