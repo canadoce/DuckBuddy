@@ -26,15 +26,40 @@ def log(msg):
     except OSError:
         pass
 
+OFF_S = 1.0      # 0.5 s was not always enough (2026-11-08: one reboot in a few stayed dead)
+TRIES = 20       # the switch-on must land: a card left unpowered is a board that stays off
+
+
+def read(fd):
+    os.write(fd, bytes([REG]))
+    return os.read(fd, 1)[0]
+
+
 try:
     fd = os.open("/dev/i2c-13", os.O_RDWR)
     fcntl.ioctl(fd, I2C_SLAVE_FORCE, 0x36)
-    os.write(fd, bytes([REG]))
-    val = os.read(fd, 1)[0]
-    log("reg 0x11 = 0x%02x, cycling dc1sw2" % val)
-    os.write(fd, bytes([REG, val & ~BIT]))
-    time.sleep(0.5)
-    os.write(fd, bytes([REG, val | BIT]))
-    time.sleep(0.1)
+    val = read(fd)
 except OSError as e:
-    log("failed: %s" % e)
+    log("failed before cycling, card power left as it is: %s" % e)
+    sys.exit(0)
+log("reg 0x11 = 0x%02x, cycling dc1sw2 off for %.1f s" % (val, OFF_S))
+try:
+    os.write(fd, bytes([REG, val & ~BIT]))
+except OSError as e:
+    log("switch-off failed: %s" % e)
+time.sleep(OFF_S)
+# Switch it back on and read it back, retrying: the write that powers the card again is the
+# one that must not be lost.
+for i in range(TRIES):
+    try:
+        os.write(fd, bytes([REG, val | BIT]))
+        time.sleep(0.02)
+        if read(fd) & BIT:
+            log("dc1sw2 on again (try %d)" % (i + 1))
+            break
+    except OSError as e:
+        log("switch-on try %d failed: %s" % (i + 1, e))
+    time.sleep(0.1)
+else:
+    log("dc1sw2 did not come back on: the board may need a power cycle")
+time.sleep(0.2)  # the card's supply settles before the reset
