@@ -1,0 +1,4 @@
+# Faceted STEP files are 17-21 MB each and the CAD zip holds them; both are rebuilt from the STL
+# files by src/feet_parts.py and src/make_rfq.sh. Their SHA-256 are kept in parts.json and RFQ-YELLOWHAMMER.md.
+STEP/
+rfq/duckbuddy-feet-cad.zip

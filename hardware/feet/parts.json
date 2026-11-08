@@ -1,0 +1,89 @@
+{
+  "source": "hardware/print/DuckBuddy.3mf",
+  "ground_tilt_removed_deg": -4.918,
+  "foot_sole_overlap_mm3": 0.749,
+  "sole_scale": 0.992,
+  "foot_sole_interference_after_scale_mm3": 231.4,
+  "right_part_checks": {
+    "foot_right": {
+      "max_dev_mm": 0.0067,
+      "volume_3mf_mm3": 12178.05,
+      "volume_out_mm3": 12178.11
+    },
+    "sole_right": {
+      "max_dev_mm": 0.0236,
+      "volume_3mf_mm3": 6250.3,
+      "volume_out_mm3": 6250.3
+    }
+  },
+  "parts": {
+    "foot_left": {
+      "bbox_mm": [
+        54.0,
+        39.94,
+        16.4
+      ],
+      "bbox_min_mm": [
+        -27.0,
+        -19.44,
+        1.95
+      ],
+      "volume_cm3": 12.178,
+      "surface_cm2": 131.24,
+      "step_faces": 19510,
+      "stl_sha256": "9ce8df16bf7cc32a6ec39040d35bc336101c237dc4710d0a779fbffa106114c0",
+      "step_sha256": "d42e9193c94212e6446181f669eb0e7ac7d439c88a89f90c373ae32096f83a05"
+    },
+    "sole_left": {
+      "bbox_mm": [
+        53.57,
+        40.87,
+        13.34
+      ],
+      "bbox_min_mm": [
+        -26.78,
+        -20.43,
+        -0.04
+      ],
+      "volume_cm3": 6.101,
+      "surface_cm2": 69.05,
+      "step_faces": 15741,
+      "stl_sha256": "e4e41b3648369458194fa0d23297ad1c93dcbfb7a155404480dee896283cec47",
+      "step_sha256": "48e0912d6305d79092a1d19b68f379cfe2d0326fd902e3bfa31c5d6e5de7492f"
+    },
+    "foot_right": {
+      "bbox_mm": [
+        54.0,
+        39.94,
+        16.4
+      ],
+      "bbox_min_mm": [
+        -27.0,
+        -20.49,
+        1.95
+      ],
+      "volume_cm3": 12.178,
+      "surface_cm2": 131.24,
+      "step_faces": 19510,
+      "stl_sha256": "cc69b192b61929271177445279d2b627215a8e98a9ba268a60734ca2719fbadf",
+      "step_sha256": "18be6d1467cc4102fd12522d28ac1a6e7c1ea8dbafdb8c9145a4d47d8807c64c"
+    },
+    "sole_right": {
+      "bbox_mm": [
+        53.57,
+        40.87,
+        13.34
+      ],
+      "bbox_min_mm": [
+        -26.78,
+        -20.43,
+        -0.04
+      ],
+      "volume_cm3": 6.101,
+      "surface_cm2": 69.05,
+      "step_faces": 15741,
+      "stl_sha256": "2db5c9dd8fbc7988be6756a1458ea346ae53035172b89ec0aad80f5ddde4450d",
+      "step_sha256": "d76427bcdc977b857c032e7ed640108e58eaee99c6a6933a5c3f4bdaf72014ea"
+    }
+  }
+}
