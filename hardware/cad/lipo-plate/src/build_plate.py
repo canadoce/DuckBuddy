@@ -40,10 +40,10 @@ def cad_build():
     if out.returncode or len(ids) != 3:
         sys.exit(out.stdout + out.stderr)
     for doc, name in zip(ids, ("lipo_plate", "imu_mount")):
-        subprocess.run(["cad", "export", "--tolerance", "0.02", doc, str(TMP / f"{name}.stl"),
+        subprocess.run(["cad", "model", "export", "--tolerance", "0.02", doc, str(TMP / f"{name}.stl"),
                         str(TMP / f"{name}.3mf")], cwd=ROOT, check=True, capture_output=True)
-        subprocess.run(["cad", "export", doc, str(TMP / f"{name}.step")], cwd=ROOT, check=True, capture_output=True)
-    subprocess.run(["cad", "export", ids[2], str(TMP / "parts.glb")], cwd=ROOT, check=True, capture_output=True)
+        subprocess.run(["cad", "model", "export", doc, str(TMP / f"{name}.step")], cwd=ROOT, check=True, capture_output=True)
+    subprocess.run(["cad", "model", "export", ids[2], str(TMP / "parts.glb")], cwd=ROOT, check=True, capture_output=True)
 
 
 def to_manifold(m):
@@ -77,11 +77,30 @@ def load_parts():
 HORN_X0 = -2.5  # the passive horn on the rear hip servos' tops: X -2 to 14, Z 23 to 26 in their meshes
 
 
+def hub(side):
+    """The hub left on a rear hip servo's top when its passive horn comes off (closed mesh), side +1
+    for the left servo, -1 for the right one."""
+    x, y = p.HORN_HOLE
+    z0 = p.SERVO_TOP_Z - 0.2  # from just inside the servo's top (Z 23 in the Microduck meshes)
+    h = trimesh.creation.cylinder(p.HUB_D / 2, p.HUB_TOP_Z - z0, sections=48)
+    h.apply_translation([x, side * y, (z0 + p.HUB_TOP_Z) / 2])
+    return h
+
+
 def without_horn(mesh):
-    """A rear hip servo's mesh without its passive horn on the top (left off on this robot)."""
-    c = mesh.triangles_center
-    keep = ~((c[:, 2] > p.SERVO_TOP_Z - 0.1) & (c[:, 0] > HORN_X0))
-    return trimesh.Trimesh(mesh.vertices, mesh.faces[keep], process=True)
+    """A rear hip servo's mesh without its passive horn on the top (left off on this robot), with
+    the hub that stays there."""
+    # any face reaching above the servo's top there: the horn's walls run down through the servo in
+    # these meshes
+    top = mesh.vertices[mesh.faces][:, :, 2].max(axis=1)
+    keep = ~((top > p.SERVO_TOP_Z - 0.1) & (mesh.triangles_center[:, 0] > HORN_X0))
+    m = trimesh.Trimesh(mesh.vertices, mesh.faces[keep], process=True)
+    side = 1 if mesh.vertices[:, 1].mean() > 0 else -1
+    # the servo's top under the horn (the meshes have none there): a thin disc at Z 22.8 to 23
+    x, y = p.HORN_HOLE
+    top_disc = trimesh.creation.cylinder(8.0, 0.2, sections=64)
+    top_disc.apply_translation([x, side * y, p.SERVO_TOP_Z - 0.24])
+    return trimesh.util.concatenate([m, top_disc, hub(side)])
 
 
 def load_fixed(f):

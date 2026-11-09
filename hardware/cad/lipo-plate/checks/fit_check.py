@@ -246,6 +246,21 @@ def main():
                 print(f"  {name:15s} vs {fname:40s} {dmin:5.2f} mm, {note}" + ("  <-- FAIL" if bad else ""))
                 if bad:
                     fails.append(f"{name} vs {fname}: {dmin:.2f} mm, {note}")
+    # the servo meshes are open, so the overlap with them is not measured: the hubs left on the rear
+    # hip servos' tops (closed cylinders) are checked on their own
+    for side, hname in ((1, "left"), (-1, "right")):
+        h = bp.hub(side)
+        side_wall = h.copy()
+        side_wall.apply_translation([0, 0, -0.1])  # below its top face, which the cap rests on
+        vm = overlap(mount, h)
+        dm_h = cKDTree(pts(side_wall, 0.1)).query(pts(mount, 0.1), workers=-1)[0].min()
+        db_h = cKDTree(pts(h, 0.1)).query(pts(bno, 0.1), workers=-1)[0].min()
+        bad = vm is None or vm > OVERLAP_LIMIT or db_h < BOARD_STOP_GAP
+        print(f"  {hname} servo hub: overlap with the mount {vm:.2f} mm3 (its cap rests on it, "
+              f"{dm_h:.2f} mm around its side), the BNO055 {db_h:.2f} mm from it (need {BOARD_STOP_GAP})"
+              + ("  <-- FAIL" if bad else ""))
+        if bad:
+            fails.append(f"{hname} hub: mount overlap {vm} mm3, BNO055 at {db_h:.2f} mm")
     dl = cKDTree(pts(big, 0.3)).query(pts(plate, 0.3), workers=-1)[0].min()
     db = cKDTree(pts(bno, 0.2)).query(pts(mount, 0.2), workers=-1)[0].min()
     dm = cKDTree(pts(plate, 0.1)).query(pts(mount, 0.1), workers=-1)[0].min()

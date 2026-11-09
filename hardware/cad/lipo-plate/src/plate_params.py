@@ -92,7 +92,12 @@ RAIL_LIP_SKIP = 4.5  # no lip within this of the Qwiic sockets' centre (X), on b
 RAIL_LIP_SETBACK = 0.5  # the lips start this far in front of the board's back edge, clear of the bracket tabs' rounded fronts
 MOUNT_HOLE = (-16.5, 25.5)  # X, |Y|: the servos' outer top holes
 HORN_HOLE = (6.0, 17.5)  # X, |Y|: the servos' axes, where the passive horn's screw goes
-HORN_BOSS_D, HORN_BOSS_H = 6.0, 3.0  # as tall as the horn left off (Z 23 to 26), so its screw fits
+# With the passive horn off, the servo's hub (the pin the horn's screw goes into) stays on its top.
+HUB_D, HUB_H = 5.0, 3.0  # its diameter and its height above the servo's top (measured)
+HUB_TOP_Z = SERVO_TOP_Z + HUB_H
+HUB_GAP = 0.3  # the caps' bore around the hub, on the radius
+CAP_WALL = 1.3  # the caps' wall around the hub
+CAP_T = 1.2  # the caps' top, resting on the hub, under the screw's head (no higher than the board's parts: the neck comes down there)
 ARM_T = 2.0
 ARM_BACK_X = -18.4  # flat backs of the arms to the outer holes, 1 mm in front of the shells' back wall
 ARM_Y0 = 13.0  # the arms' inner side, 0.5 mm outside the upper bracket's tabs

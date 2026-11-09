@@ -11,8 +11,9 @@ shell's lip. One **27 mm velcro strap** goes around the pack and through a flat 
 
 The **BNO055 breakout** (Adafruit 4646) lies flat, chip up, straight on the tops of the two rear
 hip servos, its long side across the robot, held by a thin frame of its own (`imu_mount`). The
-frame is screwed into each servo's horn screw hole (the passive horns on these two servos are left
-off) and into their free outer top holes, where DuckBuddy's PDB/IMU board goes
+frame is screwed to each servo's hub (the pin the passive horn's screw goes into, which stays on
+the servo's top when the horn comes off; the passive horns on these two servos are left off),
+through a cap that fits over the hub and rests on it, and into their free outer top holes, where DuckBuddy's PDB/IMU board goes
 ([`hardware/pcb/pdb-imu`](../../pcb/pdb-imu/README.md)). The board slides into the frame from
 behind, under a lip along each side, up to the front rail; the plate's upper bracket tabs, 0.2 mm
 behind it, keep it from sliding back out. It sits this low because the head bows forward when the
@@ -48,8 +49,8 @@ Z −55 the robot stopped on its back in 4 of the 5 stress conditions.
 PETG, 0.2 mm layers, 2 walls, 30% infill, as the other parts in `hardware/print`. Print the plate
 standing on its flat bottom (the plate's lower edge and the cup's rim), with supports under the
 shelf, the hinge knuckles and the servo brackets. About 43 × 55 × 89 mm, 14.6 cm³. Print the mount
-on its flat underside: no supports (the side lips reach 1 mm over the board). 28 × 56.5 × 3 mm,
-0.8 cm³.
+on its flat underside: no supports (the side lips reach 1 mm over the board, the caps' tops bridge
+5.6 mm over the hubs' bores). 29 × 56 × 4.2 mm, 0.9 cm³.
 
 ## Parts and assembly
 
@@ -60,13 +61,13 @@ on its flat underside: no supports (the side lips reach 1 mm over the board). 28
 | M2 screws, as for the old plate | 4 | the plate's brackets into the rear hip servos' inner holes, two from below, two from above |
 | Adafruit BNO055 breakout (4646) | 1 | on the mount |
 | M2 × 6 self-tapping screw | 2 | through the mount's arms into the rear hip servos' outer top holes (2 mm of mount, about 4 mm into the servo) |
-| The passive horns' screws | 2 | through the mount's bosses into the rear hip servos' horn screw holes (the bosses are 3 mm tall, as the horns, so the same screws fit) |
+| The passive horns' screws | 2 | through the mount's caps (1.2 mm tops) into the rear hip servos' hubs; check that they reach the hub's thread, or take an M2 screw as much longer as the horn over the hub was thinner than 1.2 mm |
 | Qwiic / STEMMA QT cable, about 30 cm | 1 | BNO055 to the [Robot HAT E1](https://code.caric.io/Robotics/elec_RPI_Robot_HAT)'s J5 |
 
 1. Take the passive horns off the tops of the two rear hip servos and keep their screws.
 2. Before the shells go on (as for DuckBuddy's PDB/IMU board), set the mount on the servo tops,
-   its bosses on the horn screw holes and its arms on the outer top holes, and screw it down with
-   the horn screws and two M2 × 6 screws.
+   its caps over the servos' hubs and its arms on the outer top holes, and screw it down with the
+   horn screws (through the caps into the hubs) and two M2 × 6 screws.
 3. Slide the BNO055 into the frame from behind, chip up, its long side across, under the side lips
    up to the front rail. Plug the Qwiic cable into the socket at the board's left end and run it up
    through the neck to the head, with slack for the head's motion.
@@ -93,7 +94,7 @@ the `trunk_base` body in the Microduck model. All dimensions are in `src/plate_p
 | LiPo | on the pad, the largest pack (78 × 36 × 29) from Z −47.5 to 30.5 (0.74 mm under the shell's tube) |
 | Cup | floor top Z −47.5, 2 mm thick, lips 1.5 mm thick and 8 mm high, inside 36 × 29.75 mm |
 | Servo brackets | as on the old plate: under the rear hip servos (tabs Z −3.26 to −1.26) and on their tops (Z 23.14 to 25.14), tabs X −21 to −14, \|Y\| 6.5 to 12.5, Ø2.5 holes at X −16.5, Y ±9.5 |
-| BNO055 mount | on the servos' tops (Z 23.14): side rails 2 mm wide at \|Y\| 12.9 to 14.9 and a front rail at X 6.7 to 8.7, all 1.4 mm thick; side lips 0.8 mm over the board's edges, 0.1 mm over its top, from 0.5 mm in front of its back edge and broken at the Qwiic sockets; arms 2 mm thick to the outer top holes (X −16.5, Y ±25.5), with round ends Ø5 and backs flat at X −18.4 (1.05 mm from the shells); bosses Ø6, 3 mm tall, on the horn screw holes (X 6, Y ±17.5) |
+| BNO055 mount | on the servos' tops (Z 23.14): side rails 2 mm wide at \|Y\| 12.9 to 14.9 and a front rail at X 6.7 to 8.7, all 1.4 mm thick; side lips 0.8 mm over the board's edges, 0.1 mm over its top, from 0.5 mm in front of its back edge and broken at the Qwiic sockets; arms 2 mm thick to the outer top holes (X −16.5, Y ±25.5), with round ends Ø5 and backs flat at X −18.4 (1.05 mm from the shells); caps over the servos' hubs (Ø5, 3 mm tall, measured, at X 6, Y ±17.5): Ø8.2 outside, bore Ø5.6, top 1.2 mm thick resting on the hub (Z 26.14 to 27.34, no higher than the board's parts), cut flat on the board's side at \|Y\| 12.9 |
 | BNO055 | flat on the servo tops, chip up: board X −13.8 to 6.5 (0.2 mm in front of the upper bracket's tabs), Y ±12.7, Z 23.14 to 24.74, parts up to Z 27.74, centre (−3.6, 0); Qwiic plug out of its left end |
 
 ## Build and check
@@ -102,6 +103,7 @@ the `trunk_base` body in the Microduck model. All dimensions are in `src/plate_p
 uv run src/build_plate.py
 uv run tools/policy_poses.py
 uv run checks/fit_check.py
+uv run checks/neck_check.py
 uv run tools/policy_videos.py
 ```
 
@@ -116,9 +118,10 @@ trunk's mass: it takes out the 119.6 g pack the robot was weighed with and the o
 in the OVONIC pack (142 g, weighed), the new plate and the mount (PETG, from their meshes) and the BNO055
 (3 g). The trunk goes from 206.2 g to 237.9 g, its centre of mass from (X −19.5, Z +3.8) to
 (X −22.6, Z −1.5) mm, and the robot from 850 g to 882 g. The two rear hip servos are shown without
-their passive horns.
+their passive horns, with the hubs left on their tops.
 `checks/fit_check.py` measures the plate against the trunk and compares the two runs: see its
-header. `tools/policy_videos.py` films the policies in the LiPo plate's scene, with the plate, the
+header. `checks/neck_check.py` runs only its head and neck part against the BNO055 and its mount
+(a few minutes), for small changes to the mount. `tools/policy_videos.py` films the policies in the LiPo plate's scene, with the plate, the
 pack, the mount and the board shown, from behind the robot (`tmp/lipo_plate_policies.mp4`).
 
 Last results (largest pack, BNO055 with its plug, the LiPo plate's masses):
@@ -127,7 +130,8 @@ Last results (largest pack, BNO055 with its plug, the LiPo plate's masses):
 |---|---|
 | Policies in the simulation, old battery / LiPo plate | walk 9/10 / 10/10, stand-up 35/35 / 35/35, sit/stand 5/5 / 5/5, forward roll 4/5 / 4/5 |
 | BNO055 mount to the shells / the plate | 1.05 / 0.5 mm; the BNO055 0.2 mm in front of the upper bracket's tabs |
-| Head and neck to the BNO055 and its mount, in the policy poses | 3.58 mm at the nearest (the neck, rolling; 4.74 mm getting up and walking). 18 roll poses where the simulation puts the head more than 1 mm into the shells are left out: it has no contact there. The legs stay outside the shells, at least 1.71 mm from the mount through the shell wall |
+| Caps over the servos' hubs | rest on them, 0.3 mm around their sides; the BNO055 2.3 mm from them |
+| Head and neck to the BNO055 and its mount, in the policy poses | 3.58 mm at the nearest (the neck, rolling; 4.7 mm getting up and walking). 18 roll poses where the simulation puts the head more than 1 mm into the shells are left out: it has no contact there. The legs stay outside the shells, at least 1.71 mm from the mount through the shell wall |
 | Overlap with the locker and the shells | 0.14 and 0.01 mm³ (the old plate: 14.42 and 0.01, where it sits in their grooves) |
 | New parts to the shells, sliding the plate in | 4.1 mm |
 | Largest pack to the locker / the shells | 0.92 / 0.76 mm |
