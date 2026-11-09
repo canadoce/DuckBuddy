@@ -161,8 +161,9 @@ def lipo_plate():
 @model
 def imu_mount():
     """The BNO055's frame on the rear hip servos' tops: a rail along each side of the board with a
-    lip over its edge and a front rail, arms to the servos' outer top holes and to their horn screw
-    holes, screwed with M2 screws. Printed on its flat underside."""
+    lip over its edge and a front rail, arms to the servos' outer top holes (M2 screws) and caps over
+    the hubs left on their tops when the passive horns come off (the horn screws). Printed on its
+    flat underside."""
     z0 = p.SERVO_TOP_Z
     zt = z0 + p.FRAME_T
     zpcb = z0 + p.PCB_T
@@ -185,15 +186,21 @@ def imu_mount():
         arm = box(p.ARM_BACK_X, xb + 2.0, *sorted((s * p.ARM_Y0, s * hy)), z0, z0 + p.ARM_T)
         arm += bd.Pos(hx, s * hy, z0 + p.ARM_T / 2) * bd.Cylinder(r, p.ARM_T)
         arm -= box(p.ARM_BACK_X - 5, p.ARM_BACK_X, -40, 40, z0 - 1, z0 + p.ARM_T + 1)
+        # the cap over the servo's hub: a wall around it from the servo's top and a top resting on
+        # it, cut flat on the board's side
+        rc = p.HUB_D / 2 + p.HUB_GAP + p.CAP_WALL
+        zc = p.HUB_TOP_Z + p.CAP_T
         horn = box(nx - 3.5, nx + 3.5, *sorted((s * p.ARM_Y0, s * ny)), z0, zt)
-        horn += bd.Pos(nx, s * ny, z0 + p.HORN_BOSS_H / 2) * bd.Cylinder(p.HORN_BOSS_D / 2, p.HORN_BOSS_H)
+        horn += bd.Pos(nx, s * ny, (z0 + zc) / 2) * bd.Cylinder(rc, zc - z0)
+        horn -= box(nx - 10, nx + 10, *sorted((-s * 40, s * yi)), z0 - 1, zc + 1)
         body += rail + arm + horn
+        body -= bd.Pos(nx, s * ny, (z0 - 1 + p.HUB_TOP_Z) / 2) * bd.Cylinder(p.HUB_D / 2 + p.HUB_GAP, p.HUB_TOP_Z - z0 + 1)
         body -= bd.Pos(hx, s * hy, z0 + 2) * bd.Cylinder(p.M2_CLEAR_D / 2, 10)
         body -= bd.Pos(nx, s * ny, z0 + 2) * bd.Cylinder(p.M2_CLEAR_D / 2, 10)
     body.label, body.color = "imu_mount", "#2b2b2b"
     assert len(body.solids()) == 1
     bb = body.bounding_box()
-    assert abs(bb.min.Z - z0) < 0.01 and abs(bb.max.Z - (z0 + p.HORN_BOSS_H)) < 0.01, bb
+    assert abs(bb.min.Z - z0) < 0.01 and abs(bb.max.Z - (p.HUB_TOP_Z + p.CAP_T)) < 0.01, bb
     assert bb.min.X >= p.ARM_BACK_X - 0.01, bb
     return body
 
