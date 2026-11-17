@@ -4,7 +4,7 @@
 robotd's `robot.state` gives 15 joint angles every tick (with joint_ids / signs / offsets applied, the same
 angles the policy sees) and the IMU gravity direction. This tool applies them to the model that microduck_rl
 trains on and renders it (`model/` comes from `robot/microduck_hl2915/` on the training server; its kinematics
-match hardware/original). With torque off, move the robot by hand and check that the model turns the same way and by the same angle.
+match the original Microduck model, hardware/rev-a/mjcf). With torque off, move the robot by hand and check that the model turns the same way and by the same angle.
 
     python tools/joint_align/server.py                     # connect to the OPi, http://localhost:8770
     python tools/joint_align/server.py --demo              # no robot, only the model (sliders)
@@ -43,7 +43,8 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 MODEL = os.path.join(HERE, "model", "robot_allcollisions.xml")
-MESHDIR = os.path.join(ROOT, "hardware", "original", "mjcf", "assets")
+# The model's meshes: the original Microduck ones, which hardware/rev-a/mjcf keeps (same geometry).
+MESHDIR = os.path.join(ROOT, "hardware", "rev-a", "mjcf", "assets")
 
 # JOINT_NAMES and home pose from duck-control/src/model.rs (mouth is not in the training model)
 JOINT_NAMES = [
