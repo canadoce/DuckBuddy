@@ -1,7 +1,8 @@
 //! The Feetech bus: HL-2915 servos (HLS series) on the Orange Pi's UART0.
 //!
-//! Same shape as [`crate::bus`] — one combined `sync_read` per tick covering the IMU board
-//! and all 15 servos, one `sync_write` of goal positions — on a different wire protocol and
+//! Same shape as [`crate::bus`] — a combined `sync_read` per tick covering the IMU board
+//! and all 15 servos (in groups of at most [`MAX_SYNC_READ`]), one `sync_write` of goal
+//! positions — on a different wire protocol and
 //! a different register map. Feetech speaks Dynamixel protocol 1.0 framing (`FF FF`, one-byte
 //! inverted-sum checksum, `SYNC_READ` 0x82), so `rustypot`'s v1 handler drives it; the
 //! register *map* is Feetech's own, and the HLS map is not the STS one at 44/46 — see
@@ -11,7 +12,9 @@
 //!
 //! - **500 kbit/s, not 1 Mbit/s.** The A733 UART is clocked from a 24 MHz crystal and
 //!   cannot divide down to 1 Mbit/s: asking for it silently yields 750 kbit/s, which no servo
-//!   understands. 500k divides exactly. A 16-device read costs ~7.5 ms of a 20 ms tick.
+//!   understands. 500k divides exactly. Reading 16 devices costs ~8 ms of a 20 ms tick.
+//! - **No more than [`MAX_SYNC_READ`] devices per `sync_read`.** Each servo times its own
+//!   reply, so in a long read the late ones can start before the one ahead has finished.
 //! - **Positions are sign-magnitude**, bit 15 the sign, not two's complement. Single-turn
 //!   servos never set it, but velocity and current do.
 //! - **Voltage and temperature sit inside the tick's block**, so [`RobotIo::slow_sensors`]
@@ -118,8 +121,18 @@ const RUNNING_ACCELERATION: u8 = 0;
 /// limp ratios the control loop relies on carry over unchanged.
 pub const KP_REFERENCE: f64 = 200.0;
 
-/// A healthy 16-device read at 500k takes ~7.5 ms. Same cap as the Dynamixel bus.
+/// One group read (at most [`MAX_SYNC_READ`] devices) at 500k takes ~4 ms. Same cap as the
+/// Dynamixel bus.
 const READ_TIMEOUT: Duration = Duration::from_millis(30);
+
+/// Most devices asked in one tick `sync_read`; a longer list is read in groups, in order.
+///
+/// A Feetech servo does not listen for the reply ahead of it: it starts its own after a delay
+/// it times itself, so the error grows with its place in the list. Measured on the Robot HAT
+/// E1 robot (15 HL-2915s, 15-byte blocks): one read of all 15 lost the last byte of ID 14's
+/// reply to ID 9 (the 15th) in 14-16 of 1000 reads; the same 15 read as 8 + 7 were clean in
+/// 3000 of 3000. Two-byte reads (positions, voltage) are short enough to stay whole.
+const MAX_SYNC_READ: usize = 8;
 
 // ── configuration ────────────────────────────────────────────────────────────
 
@@ -619,10 +632,15 @@ impl FeetechIo {
 
 impl RobotIo for FeetechIo {
     fn read(&mut self) -> Result<Sensors> {
-        let blocks = self
-            .controller
-            .sync_read_raw_data(&self.ids, READ_ADDR, READ_LEN)
-            .map_err(|e| IoError::Bus(format!("combined imu+motor sync_read: {e}")))?;
+        // In groups (see MAX_SYNC_READ); the IMU, last in `ids`, stays last in its group.
+        let mut blocks = Vec::with_capacity(self.ids.len());
+        for group in self.ids.chunks(MAX_SYNC_READ) {
+            let part = self
+                .controller
+                .sync_read_raw_data(group, READ_ADDR, READ_LEN)
+                .map_err(|e| IoError::Bus(format!("combined imu+motor sync_read: {e}")))?;
+            blocks.extend(part);
+        }
         if blocks.len() != self.ids.len() {
             return Err(IoError::ShortRead {
                 what: "sync_read blocks",
