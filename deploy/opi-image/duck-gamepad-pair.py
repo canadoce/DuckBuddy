@@ -67,7 +67,7 @@ def choose(manager, adapter, adapter_path):
                 manager.GetManagedObjects(), adapter_path).items()
                 if is_gamepad(props) and not props.get("Paired") and "RSSI" in props]
             if len(candidates) > 1:
-                raise RuntimeError("发现多只未配对手柄，请只让目标手柄快闪后重试")
+                raise RuntimeError("found more than one unpaired gamepad: make only the one you want blink fast, then try again")
             if candidates:
                 path = candidates[0]
                 if first_seen is None or first_seen[0] != path:
@@ -77,7 +77,7 @@ def choose(manager, adapter, adapter_path):
             else:
                 first_seen = None
             time.sleep(0.5)
-        raise RuntimeError("没有找到快闪的蓝牙手柄，请重新进入配对模式")
+        raise RuntimeError("no fast-blinking Bluetooth gamepad found: put it in pairing mode again")
     finally:
         adapter.StopDiscovery()
 
@@ -104,8 +104,8 @@ def pair(bus, path):
             raise errors[0]
         props.Set(DEVICE, "Trusted", dbus.Boolean(True))
         if props.Get(DEVICE, "Connected"):
-            return "手柄已配对并连接"
-        return "手柄已配对，按 Home 键回连"
+            return "gamepad paired and connected"
+        return "gamepad paired: press Home to reconnect"
     finally:
         manager.UnregisterAgent(agent_path)
         agent.remove_from_connection()
@@ -122,21 +122,21 @@ def run(request, automatic):
                 break
             time.sleep(1)
         else:
-            raise RuntimeError("找不到蓝牙适配器")
+            raise RuntimeError("no Bluetooth adapter found")
         obj = bus.get_object(BLUEZ, adapter_path)
         props = dbus.Interface(obj, PROPS)
         if not props.Get(ADAPTER, "Powered"):
             props.Set(ADAPTER, "Powered", dbus.Boolean(True))
         existing = devices(objects, adapter_path)
         if automatic and any(is_gamepad(p) and p.get("Paired") for p in existing.values()):
-            status("done", "已有配对手柄，按 Home 键回连")
+            status("done", "a gamepad is already paired: press Home to reconnect")
             return
-        status("scanning", "正在查找手柄，请让手柄进入快闪配对模式", request)
+        status("scanning", "looking for a gamepad: put it in fast-blink pairing mode", request)
         path = choose(manager, dbus.Interface(obj, ADAPTER), adapter_path)
-        status("pairing", "已发现手柄，正在配对", request)
+        status("pairing", "gamepad found, pairing", request)
         status("done", pair(bus, path), request)
     except (dbus.DBusException, RuntimeError) as error:
-        status("failed", f"配对失败：{error}", request)
+        status("failed", f"pairing failed: {error}", request)
 
 
 def main():

@@ -90,14 +90,14 @@ button:disabled{opacity:.45;cursor:default}
       <button id="c-home" class="save" hidden>Write and go home</button>
     </div>
     <div id="calmsg"></div>
-    <button id="center-all" hidden>当前位置设为全部舵机中位</button>
+    <button id="center-all" hidden>Set current positions as every servo's center</button>
     <details id="hold-panel" hidden>
-      <summary>零位上力微调</summary>
-      <p class="help">先托稳鸭子，让关节接近零位，然后在工作台总览停止 robotd。上力后拖动各关节滑轨，松开滑块时发送目标。调整好后托住鸭子卸力，再写入配置。</p>
+      <summary>Hold at zero and fine-tune</summary>
+      <p class="help">Hold the duck steady with its joints near zero, then stop robotd on the workbench overview. With torque on, drag each joint's slider; the target is sent when you let go of the slider. When it looks right, hold the duck, release torque, then write the config.</p>
       <div class="cal">
-        <button id="hold-start">上力到零位</button>
-        <button id="hold-apply">卸力并应用微调</button>
-        <button id="hold-release">卸力</button>
+        <button id="hold-start">Torque on at zero</button>
+        <button id="hold-apply">Release and apply the fine-tune</button>
+        <button id="hold-release">Release torque</button>
       </div>
       <div id="hold-status" role="status"></div>
       <div id="hold-rows"></div>
@@ -122,7 +122,7 @@ async function hold(body) {
     if (!r.ok) alert(r.msg);
     st = await (await fetch("/state")).json();
   } catch (e) {
-    $("hold-status").textContent = "请求失败，请核对舵机状态";
+    $("hold-status").textContent = "Request failed: check the servos' state";
   } finally {
     holdBusy = false;
     draw();
@@ -166,11 +166,11 @@ function drawHold() {
     }
   });
 }
-$("hold-start").onclick = () => confirm("鸭子已托稳、各关节接近零位？确认后各关节会上力并移动。") && hold({});
+$("hold-start").onclick = () => confirm("Duck held steady with every joint near zero? After you confirm, the joints get torque and move.") && hold({});
 $("hold-apply").onclick = () => hold({release: true, apply: true});
 $("hold-release").onclick = () => hold({release: true});
 $("center-all").onclick = async () => {
-  if (!confirm("请确认 robotd 已停止、全身已卸力，并把 15 个关节保持在机械零位。将校正舵机中位并保存关节零位配置。")) return;
+  if (!confirm("Confirm robotd is stopped, all torque is off, and all 15 joints are held at their mechanical zero. This sets each servo's center and saves the joint zero offsets to the config.")) return;
   holdBusy = true;
   drawHold();
   try {

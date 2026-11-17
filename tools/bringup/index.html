@@ -548,16 +548,16 @@ async function refresh() {
   testWarn();
 }
 $("ov-pair").onclick = e => busy(e.target, async () => {
-  if (!confirm("请把目标手柄切到 Xbox 模式并让指示灯快闪，然后开始配对。")) return;
+  if (!confirm("Switch the gamepad to Xbox mode and make its light blink fast, then start pairing.")) return;
   let result = await call("gamepad_pair");
   const request = result.request;
-  toast("配对请求已发送，请保持手柄快闪");
+  toast("Pairing request sent: keep the gamepad blinking fast");
   const deadline = Date.now() + 265000;
   while (result.state !== "done" && result.state !== "failed" && Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 1500));
     result = await call("gamepad_pair", {request});
   }
-  toast(result.msg || "等待配对结果超时，请检查鸭子的蓝牙服务", result.state !== "done");
+  toast(result.msg || "Timed out waiting for the pairing result: check the duck's Bluetooth service", result.state !== "done");
 });
 $("ov-refresh").onclick = e => busy(e.target, refresh);
 $("ov-reconnect").onclick = e => busy(e.target, async () => { await post("/api/agent/restart", {target: "robot"}); await refresh(); });
@@ -568,7 +568,7 @@ $("rd-stop").onclick = e => busy(e.target, async () => {
 });
 $("rd-start").onclick = e => busy(e.target, async () => { const r = await call("robotd_start"); toast(r.msg); await refresh(); });
 $("ov-enable-services").onclick = e => busy(e.target, async () => {
-  if (!confirm("关节映射和零位标定已完成，鸭子已托稳？启用整机服务时可能重启 robotd。")) return;
+  if (!confirm("Joint mapping and zero calibration done, and the duck held steady? Enabling the robot services may restart robotd.")) return;
   const r = await call("enable_duck_services", {}, "robot", 75);
   toast(r.msg); await refresh();
 });
@@ -755,7 +755,7 @@ async function mpWiggle(id, label) {
 async function mpPick(id) {
   MP.cur = id; mpRender();
   if (MP.multi.includes(id)) {
-    mpNow(`ID ${id}：点下面的实际关节直接登记。`);
+    mpNow(`ID ${id}: click its real joint below to register it directly.`);
     return;
   }
   const r = await mpWiggle(id);

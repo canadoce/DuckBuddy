@@ -263,7 +263,7 @@ class bus_session:
 def op_gamepad_pair(args):
     status_path = "/run/duck-gamepad/status.json"
     if not os.path.isfile("/usr/local/sbin/duck-gamepad-pair"):
-        raise RuntimeError("当前镜像没有手柄自动配对服务")
+        raise RuntimeError("this image has no automatic gamepad pairing service")
     request = args.get("request")
     if not request:
         try:
@@ -332,15 +332,15 @@ def duck_services_command():
 def op_enable_duck_services(args):
     command = duck_services_command()
     if not command:
-        raise RuntimeError("当前系统或配置不支持 duck-services")
+        raise RuntimeError("this system or config does not support duck-services")
     result = subprocess.run([command, "on", "-y"], capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
-        raise RuntimeError((result.stdout + "\n" + result.stderr).strip() or "启用服务失败")
+        raise RuntimeError((result.stdout + "\n" + result.stderr).strip() or "enabling the services failed")
     units = ("robotd-dev", "padd-dev")
     failed = [unit for unit in units if user_unit(unit, "is-active").stdout.strip() != "active"]
     if failed:
-        raise RuntimeError("这些服务未启动：" + "、".join(failed))
-    return dict(msg="已启用整机服务，robotd 和手柄服务正在运行。按手柄 Start 启用行走。")
+        raise RuntimeError("these services did not start: " + ", ".join(failed))
+    return dict(msg="Robot services enabled: robotd and the gamepad service are running. Press Start on the gamepad to enable walking.")
 
 
 def op_robotd_stop(args):
@@ -658,52 +658,52 @@ def op_wiggle(args):
 def op_calibration_hold(args):
     """Position-mode bench calibration on the robot bus."""
     if Ctx.usb:
-        raise BusError("零位上力微调要用机器人总线")
+        raise BusError("holding at zero for fine-tuning needs the robot bus")
     Ctx.config, _ = load_config(Ctx.cfg_path)
     cfg = bus_cfg()
     ids = cfg.get("joint_ids", [])
     if len(ids) != 15 or len(set(ids)) != 15 or any(not 0 <= sid < 254 or sid == IMU_ID for sid in ids):
-        raise BusError("请先写好 15 个关节的 ID 映射")
+        raise BusError("write the ID mapping of all 15 joints first")
     release = bool(args.get("release"))
     targets = {int(i): int(value) for i, value in args.get("targets", {}).items()}
     if not release and (not targets or any(not 0 <= i < len(ids) or not 0 <= v <= 4095
                                           for i, v in targets.items())):
-        raise BusError("目标超出舵机单圈范围，请先处理零点跳变")
+        raise BusError("the target is outside the servo's single-turn range: deal with the wrap point first")
     mpc = ma_per_count({})
     speed, current_ma = 12, 400
     with bus_session() as bus:
         if release:
             failed = [sid for sid in ids if not bus.w8(sid, TORQUE, 0)]
             if failed:
-                raise BusError(f"卸力未确认，未应答 ID：{failed}")
-            return {"msg": "已卸力"}
+                raise BusError(f"torque release not confirmed, no reply from IDs: {failed}")
+            return {"msg": "torque released"}
         starts = {}
         for i, target in targets.items():
             sid = ids[i]
             position = bus.pos(sid)
             if position is None or not 0 <= position <= 4095 or bus.r8(sid, MODE) not in (0, 4):
-                raise BusError(f"ID {sid} 无法读取单圈位置或不在位置模式")
+                raise BusError(f"ID {sid}: cannot read a single-turn position, or not in position mode")
             if abs(position - target) * DEG_PER_COUNT > 30:
-                raise BusError(f"ID {sid} 离目标超过 30°，请先卸力摆近零位")
+                raise BusError(f"ID {sid} is more than 30° from its target: release torque and move the joint near zero first")
             starts[i] = position
         try:
             for i, target in targets.items():
                 sid = ids[i]
-                bus.must(bus.w8(sid, 41, 20), "设置加速度")
-                bus.must(goal(bus, sid, target, max(1, round(current_ma / mpc)), speed), "写标定目标")
-                bus.must(bus.w8(sid, TORQUE, 1), "上扭矩")
+                bus.must(bus.w8(sid, 41, 20), "set acceleration")
+                bus.must(goal(bus, sid, target, max(1, round(current_ma / mpc)), speed), "write calibration target")
+                bus.must(bus.w8(sid, TORQUE, 1), "torque on")
             for i, target in targets.items():
                 sid = ids[i]
                 trace = []
                 problem = watch_move(bus, sid, starts[i], target, mpc, 1.0, 1500, 100,
                                      trace, time.time(), done_tol=4)
                 if problem or not trace or abs(trace[-1][1] - target) > 4:
-                    raise BusError(f"ID {sid}：{problem or '目标未到位'}")
+                    raise BusError(f"ID {sid}: {problem or 'did not reach the target'}")
         except Exception:
             for sid in ids:
                 bus.w8(sid, TORQUE, 0)
             raise
-    return {"msg": "已到位并保持"}
+    return {"msg": "in place and holding"}
 
 
 def op_center(args):
@@ -761,14 +761,14 @@ def op_set_center_here(args):
 def op_center_calibration(args):
     """Rebase the full mechanical zero pose and its software offsets together."""
     if Ctx.usb:
-        raise BusError("批量中位校正要用机器人总线")
+        raise BusError("centring all servos needs the robot bus")
     config, path = load_config(Ctx.cfg_path)
     ids = (config or {}).get("bus", {}).get("joint_ids", [])
     signs = args["signs"]
     if len(ids) != 15 or len(set(ids)) != 15 or any(not 0 <= i <= 252 or i == IMU_ID for i in ids):
-        raise BusError("请先写好 15 个关节的 ID 映射")
+        raise BusError("write the ID mapping of all 15 joints first")
     if len(signs) != 15 or any(s not in (-1, 1) for s in signs):
-        raise BusError("请先核对关节方向")
+        raise BusError("check the joint directions first")
     with open(path, encoding="utf-8") as f:
         original = f.read()
     suffix = str(time.time_ns())
@@ -778,12 +778,12 @@ def op_center_calibration(args):
         old, new = {}, {}
         for sid in ids:
             if bus.r8(sid, TORQUE) != 0:
-                raise BusError(f"ID {sid} 未确认卸力，请先托稳并卸力")
+                raise BusError(f"ID {sid}: torque release not confirmed: hold the robot and release torque first")
             if bus.r16(sid, 3) != 6922:
-                raise BusError(f"ID {sid} 未确认是 HL-2915，批量校正暂仅支持 HL-2915")
+                raise BusError(f"ID {sid} is not confirmed as an HL-2915: centring all servos supports only the HL-2915 for now")
             value, position = bus.r16(sid, 31), bus.pos(sid)
             if value is None or position is None or not 0 <= position <= 4095:
-                raise BusError(f"ID {sid} 无法读取单圈位置，请先恢复单圈读数")
+                raise BusError(f"ID {sid}: cannot read a single-turn position: get a single-turn reading back first")
             old[sid] = smag(value)
             new[sid] = centered_correction(old[sid], position)
         shutil.copy2(path, backup)
@@ -797,12 +797,12 @@ def op_center_calibration(args):
                     write_reg(bus, sid, 31, new[sid])
                     time.sleep(0.05)
                 if bus.r16(sid, 31) != enc(new[sid]) or bus.r8(sid, LOCK) != 1:
-                    raise BusError(f"ID {sid} 位置校正或 EEPROM 锁读回失败")
+                    raise BusError(f"ID {sid}: the position correction or the EEPROM lock did not read back")
             offsets = []
             for sid in ids:
                 pos = bus.pos(sid)
                 if pos is None or abs(pos - 2048) > 3:
-                    raise BusError(f"ID {sid} 校正后读数为 {pos}，请保持全身机械零位")
+                    raise BusError(f"ID {sid} reads {pos} after the correction: keep the whole robot at its mechanical zero")
                 offsets.append(pos - 2048)
             text = original
             for key, values in (("joint_signs", signs), ("joint_offsets", offsets)):
@@ -810,7 +810,7 @@ def op_center_calibration(args):
                 text, count = re.subn(rf"(?m)^({key}[ \t]*=[ \t]*)\[[^\]\n]*\]",
                                       lambda m: m[1] + formatted, text, count=1)
                 if count != 1:
-                    raise BusError(f"找不到配置项 {key}")
+                    raise BusError(f"config key {key} not found")
             with open(temporary, "x", encoding="utf-8") as f:
                 f.write(text)
                 f.flush()
@@ -829,10 +829,10 @@ def op_center_calibration(args):
             if os.path.exists(temporary):
                 os.unlink(temporary)
             if failed:
-                raise BusError(f"{error}；这些 ID 回滚未核实：{failed}，备份 {backup}.json") from error
+                raise BusError(f"{error}; rollback not confirmed for IDs: {failed}, backup {backup}.json") from error
             raise
     Ctx.config, _ = load_config(path)
-    return dict(msg="15 只舵机已设中位并写入零位配置", offsets=offsets, backup=backup)
+    return dict(msg="all 15 servos centred and the zero offsets written to the config", offsets=offsets, backup=backup)
 
 
 def op_torque(args):

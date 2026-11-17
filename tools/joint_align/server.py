@@ -252,10 +252,10 @@ class Calib:
             if not self.loaded:
                 return False, "Config not read yet"
             signs, offsets = list(self.signs), list(self.offsets)
-        invalid = [f"{JOINT_CN[name]}（{offset}）" for name, offset in zip(JOINT_NAMES, offsets)
+        invalid = [f"{JOINT_CN[name]} ({offset})" for name, offset in zip(JOINT_NAMES, offsets)
                    if abs(offset) > 2048]
         if invalid:
-            return False, "零位偏移超出 ±2048，未写入：" + "、".join(invalid)
+            return False, "zero offsets beyond ±2048, nothing written: " + ", ".join(invalid)
         try:
             out = subprocess.run(["ssh", "-o", "BatchMode=yes", self.host, "python3", "-", self.path,
                                   "'" + json.dumps(signs) + "'", "'" + json.dumps(offsets) + "'"],
@@ -388,15 +388,15 @@ def make_handler(live, renderer, demo, calib, hold_call=None):
                         for o, s, d in zip(calib.offsets, calib.signs, held_degrees)
                     ]
             held_degrees = None
-            return "已卸力" + ("，微调已应用，请写入配置" if body.get("apply") else "")
+            return "torque released" + ("; fine-tune applied, now write the config" if body.get("apply") else "")
         with calib.lock:
             if not calib.loaded:
-                raise ValueError("配置还没读到")
+                raise ValueError("the config has not been read yet")
             offsets, signs = list(calib.offsets), list(calib.signs)
         if "i" in body:
             i, degrees = int(body["i"]), float(body["deg"])
             if held_degrees is None or not 0 <= i < len(JOINT_NAMES) or not -10 <= degrees <= 10:
-                raise ValueError("请先上力到零位，滑轨范围为 ±10°")
+                raise ValueError("turn torque on at zero first; the sliders reach ±10°")
             updated = list(held_degrees)
             updated[i] = degrees
             indices = [i]
@@ -406,10 +406,10 @@ def make_handler(live, renderer, demo, calib, hold_call=None):
         targets = {i: 2048 + offsets[i] + signs[i] * round(math.radians(updated[i]) / RAD_PER_COUNT)
                    for i in indices}
         if any(abs(target - 2048) > 2048 for target in targets.values()):
-            raise ValueError("微调后的零位超出 ±2048，请先处理零点跳变")
+            raise ValueError("the fine-tuned zero is beyond ±2048: deal with the wrap point first")
         hold_call("calibration_hold", {"targets": targets})
         held_degrees = updated
-        return "已到位并保持"
+        return "in place and holding"
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -464,17 +464,17 @@ def make_handler(live, renderer, demo, calib, hold_call=None):
                     try:
                         if u.path == "/center-all":
                             if held_degrees is not None:
-                                raise ValueError("请先卸力并结束滑轨微调")
+                                raise ValueError("release torque and finish the slider fine-tune first")
                             with calib.lock:
                                 if not calib.loaded:
-                                    raise ValueError("配置还没读到")
+                                    raise ValueError("the config has not been read yet")
                                 signs = list(calib.signs)
                             rebased = hold_call("center_calibration", {"signs": signs})
                             with calib.lock:
                                 calib.offsets = list(rebased["offsets"])
                                 calib.loaded = (signs, list(calib.offsets))
                                 calib.msg = rebased["msg"]
-                            msg = rebased["msg"] + "；回总览启动 robotd，再检查站姿"
+                            msg = rebased["msg"] + "; start robotd on the overview, then check the standing pose"
                         else:
                             msg = adjust_hold(body)
                         result = dict(ok=True, msg=msg)
@@ -488,7 +488,7 @@ def make_handler(live, renderer, demo, calib, hold_call=None):
                 return self._send(b"{}", "application/json")
             if calib and u.path in ("/flip", "/nudge", "/zero", "/reset", "/save"):
                 if held_degrees is not None or hold_lock.locked():
-                    return self._send(json.dumps(dict(ok=False, msg="请先卸力并结束滑轨微调")).encode(),
+                    return self._send(json.dumps(dict(ok=False, msg="release torque and finish the slider fine-tune first")).encode(),
                                       "application/json")
                 ok, msg = True, ""
                 if u.path == "/flip":
