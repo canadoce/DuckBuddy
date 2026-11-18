@@ -72,6 +72,24 @@ const HEAD_JOINTS: std::ops::RangeInclusive<usize> = 5..=8;
 /// honoured again (see `getting_up`).
 const GET_UP_SETTLE: Duration = Duration::from_secs(1);
 
+/// The pose held with no policy driving, with the head command applied to the head joints.
+///
+/// The head command is an offset from home. Without this a robot held at home ignores
+/// `robot.head` until a policy drives, and a head slider or stick seems to do nothing (or only
+/// to sag the heavy head backward). Only the standing home pose takes it: a robot held where
+/// it sat or fell keeps its head where it is, as the rest of its body does.
+fn held_with_head(hold: [f64; NUM_JOINTS], ready: bool, head: &[f64; 4]) -> [f64; NUM_JOINTS] {
+    if !ready || hold != DEFAULT_POSITION {
+        return hold;
+    }
+    let mut targets = hold;
+    for (k, j) in HEAD_JOINTS.enumerate() {
+        let (lo, hi) = duck_control::model::JOINT_LIMITS[j];
+        targets[j] = (DEFAULT_POSITION[j] + head[k]).clamp(lo, hi);
+    }
+    targets
+}
+
 /// Hold the head joints within `band` radians of home (`[safety] head_band_deg`).
 fn band_head(targets: &mut [f64; NUM_JOINTS], band: f64) {
     for j in HEAD_JOINTS {
@@ -2723,7 +2741,12 @@ async fn control_loop<T: RobotIo>(
                 true,
                 "homing",
             ),
-            _ => (hold, policy_cfg.gain, false, "held"),
+            _ => (
+                held_with_head(hold, bringup == Bringup::Ready && !powered_off, &command.head),
+                policy_cfg.gain,
+                false,
+                "held",
+            ),
         };
         state.moving.store(moving, Ordering::Relaxed);
 
@@ -4229,6 +4252,25 @@ mod tests {
         assert!((t[5] - (DEFAULT_POSITION[5] - 15f64.to_radians())).abs() < 1e-12);
         assert_eq!(t[6], DEFAULT_POSITION[6] + 0.1);
         assert_eq!(t[2], DEFAULT_POSITION[2] + 1.0, "legs are not the head");
+    }
+
+    #[test]
+    fn a_robot_held_at_home_takes_the_head_command() {
+        let head = [-0.27, 0.1, 0.0, 0.0]; // neck forward, head pitch down a little
+        let t = held_with_head(DEFAULT_POSITION, true, &head);
+        assert!((t[5] - (DEFAULT_POSITION[5] - 0.27)).abs() < 1e-12);
+        assert!((t[6] - (DEFAULT_POSITION[6] + 0.1)).abs() < 1e-12);
+        assert_eq!(t[2], DEFAULT_POSITION[2], "legs stay at home");
+
+        // Not yet homed, or held off its feet: the head stays where the hold has it.
+        assert_eq!(held_with_head(DEFAULT_POSITION, false, &head), DEFAULT_POSITION);
+        let mut sitting = DEFAULT_POSITION;
+        sitting[3] += 1.0;
+        assert_eq!(held_with_head(sitting, true, &head), sitting);
+
+        // A command past the joint's travel stops at its limit.
+        let t = held_with_head(DEFAULT_POSITION, true, &[-3.0, 0.0, 0.0, 0.0]);
+        assert_eq!(t[5], duck_control::model::JOINT_LIMITS[5].0);
     }
 
     #[test]
