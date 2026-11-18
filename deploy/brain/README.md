@@ -71,7 +71,7 @@ back; run `install.sh` again afterwards.
 
 | Where | What |
 |---|---|
-| `~/robot` | `robotd`, `tofd`, `robotctl`, `sounds`, the robot configs, `active.toml` → the chosen config, `robotd.env`, onnxruntime 1.28.3, `recs/` (service logs) |
+| `~/robot` | `robotd`, `tofd`, `robotctl`, `sounds`, the robot configs, `active.toml` → the chosen config, `policies/` (the repo's `policies/`, which the robot configs' `[policy]` paths point at), `robotd.env`, onnxruntime 1.28.3, `recs/` (service logs) |
 | `~/lifed` `~/voiced` `~/visiond` `~/duckweb` `~/duckbrain` `~/persona` | the Python services from [tools](../../tools); `~/lifed/voice` the voice clips (rendered on your computer with edge-tts); `~/visiond/duckcam` built on the board |
 | `~/voiced/.venv` | sherpa-onnx (system numpy) |
 | `~/models/hearing` | Moonshine v2 base English (speech to text), silero VAD, DPDFNet and GTCRN denoisers, NVIDIA TitaNet-small (voice prints) |

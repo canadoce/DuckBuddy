@@ -14,7 +14,8 @@
 #                    (default opi-hl2915-robothat-e1.toml; only set on the first deploy)
 #
 # What goes where on the brain (the login user's home):
-#   ~/robot      robotd, tofd, robotctl, sounds, the robot configs, robotd.env, onnxruntime, recs/ (logs)
+#   ~/robot      robotd, tofd, robotctl, sounds, the robot configs, policies/ (the repo's policies),
+#                robotd.env, onnxruntime, recs/ (logs)
 #   ~/lifed ~/voiced ~/visiond ~/duckweb ~/duckbrain ~/persona   the Python services (tools/), ~/lifed/voice the clips
 #   ~/.config/duckbrain                              duckbrain.env (the chat LLM) and jev.env (the Jev), written by you
 #   ~/models/hearing                                 Moonshine v2 base (English), silero VAD, DPDFNet and
@@ -97,6 +98,8 @@ fi
 
 rsync -tz -e "${SSH[*]}" "$BIN/robotd" "$BIN/tofd" "$BIN/robotctl" "$BIN/sounds" "$HOST:robot/"
 rsync -tz -e "${SSH[*]}" "$REPO"/deploy/robots/*.toml "$HOST:robot/"
+"${SSH[@]}" "$HOST" 'mkdir -p ~/robot/policies'
+rsync -tz -e "${SSH[*]}" "$REPO"/policies/*.onnx "$HOST:robot/policies/"
 for t in lifed voiced visiond duckweb duckbrain persona; do
 	"${RSYNC[@]}" "${TOOL_EXCLUDES[@]}" --exclude 'voice/' --exclude 'state.json' --exclude 'duckcam' \
 		"$REPO/tools/$t/" "$HOST:$t/"

@@ -4,12 +4,12 @@
 # servo bus, a BNO055 in the body on the HAT's Qwiic J5. Copy to /etc/robot/robotd.toml
 # (or run `robotd --params <this file>`).
 #
-# Not calibrated yet. Before robotd will run the robot, fill in with tools/bringup:
-#   joint_offsets - the "Zero calibration" page
+# Calibrated on 2026-11-18 with tools/bringup's "Zero calibration" page: each servo's own center
+# (EEPROM 31) set so it reads 2048 at the zero pose, then joint_offsets from the fine-tune, and
+# joint_signs checked by moving each joint by hand. A servo replaced later needs its center set
+# again (the page's "Set current positions as every servo's center").
 #   imu_axes      - the "Whole-robot test" page, IMU line: the sensor axis that carries
 #                   gravity with the robot upright and lying on its back
-# joint_signs are the rev-a robot's (deploy/robots/opi-hl2915-rev-a.toml): the printed parts
-# hold the servos the same way. Check them on the "Joint mapping" page all the same.
 
 [bus]
 # UART0, header pins 8/10. The brain installer (deploy/brain/install.sh) moves the serial
@@ -20,8 +20,8 @@ servo = "feetech_hls"
 # hardware/cad/servo-dummy). Check them on the bring-up tool's "Joint mapping" page.
 #             L-yaw roll pitch knee ankle neck head  yaw  roll mouth R-yaw roll pitch knee ankle
 joint_ids     = [10,  7,   3,   4,   5,   2,   8,   12,  13,  15,  1,   6,   11,  14,  9]
-joint_signs   = [-1, -1,  -1,  -1,  -1,   1,   1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1]
-joint_offsets = []
+joint_signs   = [-1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1]
+joint_offsets = [-33,   -4,   30,  -23,  -21, -196,  -87, -150,    0,    0,    0,   54,  -47,  -72, -163]
 imu = true
 # The BNO055 breakout (Adafruit 4646, address 0x28) on Qwiic J5: TWI0, /dev/i2c-0.
 imu_source = "bno055"
@@ -32,6 +32,10 @@ imu_i2c_address = 40
 # so expect the trunk's z to come from the sensor's z.
 imu_axes = "x,y,z"
 imu_median = false
+# The BNO055 sits a little off level on its mount: standing at home with flat feet (the model
+# reads pitch 0, roll 0 there) it read pitch -1.9 and roll +2.7 (2026-11-18).
+imu_pitch_trim_deg = 1.9
+imu_roll_trim_deg = -2.7
 position_kp = 16
 position_kp_head = 16
 position_kd = 8
@@ -58,3 +62,17 @@ device = "duck_out"
 [theremin]
 # tofd's depth stream, as the brain's tofd unit serves it (deploy/brain/units/tofd-dev.service).
 socket = "/tmp/tofd.sock"
+
+[policy]
+# The repo's policies/, the same set upstream's HL-2915 robot runs (opi-hl2915-rev-a.toml leaves
+# [policy] at robotd's defaults, which are these files in the release directory). This robot has
+# no release directory, so deploy/brain/deploy.sh copies them to ~/robot/policies; the paths are
+# relative to robotd's working directory, ~/robot. On 2026-11-18 the standing policy did not yet
+# keep this robot up.
+walk        = "policies/alpha_walking.onnx"
+stand       = "policies/alpha_stand.onnx"
+sitstand    = "policies/alpha_sitstand.onnx"
+ground_pick = "policies/alpha_ground_pick.onnx"
+kick_left   = "policies/ball_kick_left.onnx"
+kick_right  = "policies/ball_kick_right.onnx"
+roulade     = "policies/roulade.onnx"
