@@ -16,7 +16,7 @@
 # What goes where on the brain (the login user's home):
 #   ~/robot      robotd, tofd, robotctl, sounds, the robot configs, policies/ (the repo's policies),
 #                robotd.env, onnxruntime, recs/ (logs)
-#   ~/lifed ~/voiced ~/visiond ~/duckweb ~/duckbrain ~/persona   the Python services (tools/), ~/lifed/voice the clips
+#   ~/lifed ~/voiced ~/visiond ~/duckweb ~/robotpanel ~/duckbrain ~/persona   the Python services (tools/), ~/lifed/voice the clips
 #   ~/.config/duckbrain                              duckbrain.env (the chat LLM) and jev.env (the Jev), written by you
 #   ~/models/hearing                                 Moonshine v2 base (English), silero VAD, DPDFNet and
 #                                                    GTCRN denoisers, TitaNet-small voice prints
@@ -87,7 +87,7 @@ fi
 
 # ---- copy ----------------------------------------------------------------------
 say "copying to $HOST"
-"${SSH[@]}" "$HOST" 'mkdir -p ~/robot/recs ~/lifed ~/voiced ~/visiond ~/duckweb ~/duckbrain ~/persona ~/.config/systemd/user ~/.config/duckbrain ~/duckbuddy-brain'
+"${SSH[@]}" "$HOST" 'mkdir -p ~/robot/recs ~/lifed ~/voiced ~/visiond ~/duckweb ~/robotpanel ~/duckbrain ~/persona ~/.config/systemd/user ~/.config/duckbrain ~/duckbuddy-brain'
 
 if [ "$INSTALL" -eq 1 ]; then
 	"${RSYNC[@]}" "$REPO/deploy/brain/install.sh" "$REPO/deploy/brain/uboot_nowait.py" "$REPO/deploy/brain/overlay" \
@@ -100,7 +100,7 @@ rsync -tz -e "${SSH[*]}" "$BIN/robotd" "$BIN/tofd" "$BIN/robotctl" "$BIN/sounds"
 rsync -tz -e "${SSH[*]}" "$REPO"/deploy/robots/*.toml "$HOST:robot/"
 "${SSH[@]}" "$HOST" 'mkdir -p ~/robot/policies'
 rsync -tz -e "${SSH[*]}" "$REPO"/policies/*.onnx "$HOST:robot/policies/"
-for t in lifed voiced visiond duckweb duckbrain persona; do
+for t in lifed voiced visiond duckweb robotpanel duckbrain persona; do
 	"${RSYNC[@]}" "${TOOL_EXCLUDES[@]}" --exclude 'voice/' --exclude 'state.json' --exclude 'duckcam' \
 		"$REPO/tools/$t/" "$HOST:$t/"
 done
@@ -189,11 +189,11 @@ ls -l "$M" "$M/moonshine"
 say "services"
 [ "$(loginctl show-user "$(id -un)" -p Linger --value)" = yes ] \
 	|| echo "note: lingering is off, the services start only while you are logged in (install.sh turns it on)"
-UNITS="robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev duckjev-dev duckbrain-dev"
+UNITS="robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev robotpanel-dev duckjev-dev duckbrain-dev"
 systemctl --user daemon-reload
 systemctl --user enable $UNITS 2>&1 | grep -v '^Created symlink' || true
 if [ "$START" = 1 ]; then
-	systemctl --user restart duckjev-dev duckbrain-dev robotd-dev tofd-dev visiond-dev duckweb-dev
+	systemctl --user restart duckjev-dev duckbrain-dev robotd-dev tofd-dev visiond-dev duckweb-dev robotpanel-dev
 	systemctl --user restart lifed-dev voiced-dev
 	sleep 5
 	for u in $UNITS; do printf '%-14s %s\n' "$u" "$(systemctl --user is-active "$u" || true)"; done

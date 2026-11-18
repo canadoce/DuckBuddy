@@ -1,7 +1,7 @@
 # The brain's user services
 
 `deploy/brain/deploy.sh` copies these to `~/.config/systemd/user` and enables robotd-dev, tofd-dev,
-lifed-dev, voiced-dev, visiond-dev, duckweb-dev, duckjev-dev and duckbrain-dev. They are user units: `systemctl --user`, no sudo.
+lifed-dev, voiced-dev, visiond-dev, duckweb-dev, robotpanel-dev, duckjev-dev and duckbrain-dev. They are user units: `systemctl --user`, no sudo.
 They start at boot because install.sh turns lingering on (`sudo loginctl enable-linger $USER`).
 
 | Unit | Runs | Notes |
@@ -12,6 +12,7 @@ They start at boot because install.sh turns lingering on (`sudo loginctl enable-
 | voiced-dev | `~/voiced/hearing.py` (its venv) | follows lifed |
 | visiond-dev | `~/visiond/visiond.py` | the camera through `~/visiond/duckcam`; stop it before a camera test |
 | duckweb-dev | `~/duckweb/duckweb.py` | the phone page on :8088 |
+| robotpanel-dev | `~/robotpanel/robotpanel.py` | the body's controls on :8090: Stand, Policy on/off, Relax, the head, lifed on/off |
 | duckjev-dev | `~/duckbrain/judge.py 8211` | Jev on 127.0.0.1:8211, settings from `~/.config/duckbrain/jev.env` (../README.md) |
 | duckbrain-dev | `~/duckbrain/server.py` | the online brain on 127.0.0.1:8210, settings from `~/.config/duckbrain/duckbrain.env` |
 | padd-dev | `~/robot/padd` | the gamepad; not enabled: it walks the robot |

@@ -72,14 +72,15 @@ back; run `install.sh` again afterwards.
 | Where | What |
 |---|---|
 | `~/robot` | `robotd`, `tofd`, `robotctl`, `sounds`, the robot configs, `active.toml` → the chosen config, `policies/` (the repo's `policies/`, which the robot configs' `[policy]` paths point at), `robotd.env`, onnxruntime 1.28.3, `recs/` (service logs) |
-| `~/lifed` `~/voiced` `~/visiond` `~/duckweb` `~/duckbrain` `~/persona` | the Python services from [tools](../../tools); `~/lifed/voice` the voice clips (rendered on your computer with edge-tts); `~/visiond/duckcam` built on the board |
+| `~/lifed` `~/voiced` `~/visiond` `~/duckweb` `~/robotpanel` `~/duckbrain` `~/persona` | the Python services from [tools](../../tools); `~/lifed/voice` the voice clips (rendered on your computer with edge-tts); `~/visiond/duckcam` built on the board |
 | `~/voiced/.venv` | sherpa-onnx (system numpy) |
 | `~/models/hearing` | Moonshine v2 base English (speech to text), silero VAD, DPDFNet and GTCRN denoisers, NVIDIA TitaNet-small (voice prints) |
 | `/var/lib/robot/sounds` | robotd's sound bank (`sounds ensure-bank`) |
 | `~/.config/systemd/user` | the user units: [units](units/README.md) |
 
 The services: robotd (the body), tofd (the ToF in the face, on J8), lifed (the life layer),
-voiced (the ears), visiond (the eyes), duckweb (the phone page, `http://<brain>:8088`), duckbrain
+voiced (the ears), visiond (the eyes), duckweb (the phone page, `http://<brain>:8088`), robotpanel
+(the body's controls without a gamepad, `http://<brain>:8090`), duckbrain
 (the online brain, `127.0.0.1:8210`) and duckjev (Jev's judgments for duckbrain, `127.0.0.1:8211`).
 
 **Who is speaking**: voiced knows people by their voice once they introduce themselves to the duck:
@@ -118,7 +119,7 @@ aplay -l                                    # card aic3104
 speaker-test -D duck_out -c 2 -t sine -f 1000 -l 1
 arecord -D duck_in -f S16_LE -r 48000 -c 2 -d 3 /tmp/mic.wav
 i2cdetect -y 2                              # 0x29: the ToF on J8
-systemctl --user status robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev duckjev-dev duckbrain-dev
+systemctl --user status robotd-dev tofd-dev lifed-dev voiced-dev visiond-dev duckweb-dev robotpanel-dev duckjev-dev duckbrain-dev
 curl -s 127.0.0.1:8210/health                # duckbrain: llm and jev
 tail -f ~/robot/recs/voiced-service.log     # what it hears
 ```

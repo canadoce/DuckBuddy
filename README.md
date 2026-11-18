@@ -63,6 +63,7 @@ flowchart TB
     PERSONA[("persona JSON<br/>name · character · voice")]
     DUCKWEB["duckweb · Python<br/>phone page :8088"]
     PADD["padd · Rust<br/>Xbox pad"]
+    PANEL["robotpanel · Python<br/>body controls :8090"]
     ROBOTD["robotd · Rust · 50 Hz<br/>ONNX policies: walk · stand up · sit · roll<br/>safety: falls · heat · battery · deadman"]
   end
   HW["15 servos · IMU · speaker"]
@@ -80,6 +81,7 @@ flowchart TB
   LIFED -- "JSON-RPC: move · skills · head · sounds · rest" --> ROBOTD
   ROBOTD -- "pose · temperatures · battery · odometry" --> LIFED
   PADD -- "JSON-RPC: driving" --> ROBOTD
+  PANEL -- "JSON-RPC: stand · policy · relax · head" --> ROBOTD
   ROBOTD -- "Feetech bus · 500 kbps" --> HW
   LIFED <-. "frp tunnel: talk · look" .-> BRAIN
   PERSONA -.-> BRAIN
@@ -160,6 +162,7 @@ flowchart LR
 | `tofd` | Rust | 8×8 ToF ranging: distance ahead, someone close |
 | `padd` | Rust | Xbox gamepad over Bluetooth; outranks `lifed` |
 | `duckweb` | Python | a phone page: state, battery, conversation, volume |
+| `robotpanel` | Python | a control page for the body without a gamepad: stand, policy on/off, relax, head, lifed on/off |
 | `duckbrain` | Python | optional, on a GPU server: any OpenAI-compatible multimodal LLM, for conversation and looking |
 | `persona` | JSON | who the duck is — name, character, how it talks — apart from the code |
 
@@ -256,7 +259,7 @@ flowchart LR
 | Path | What |
 |---|---|
 | `robotd`, `duck-control`, `kinematics`, `padd`, `robotctl`, … | the Rust workspace (from Microduck, extended) |
-| `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `duckbrain`, `persona`, the bring-up workbench `bringup`, the Mac simulator `sim`, robot test scripts |
+| `tools/` | the Python services: `lifed`, `voiced`, `visiond`, `duckweb`, `robotpanel`, `duckbrain`, `persona`, the bring-up workbench `bringup`, the Mac simulator `sim`, robot test scripts |
 | `firmware/imu-feetech` | the IMU board's firmware (STM32G031 + LSM6DSV16X, speaks the Feetech protocol) |
 | `training/` | HL-2915 tasks, actuator identification (BAM), evaluation scripts, trained policies |
 | `hardware/` | the print project (`hardware/print`), the open PDB/IMU R3 board (`hardware/pcb/pdb-imu`, tscircuit), the open head shell (`hardware/cad/open-head`, an organic frame generated in Python), the LiPo plate and the BNO055 mount (`hardware/cad/lipo-plate`, build123d), the servo dummy (`hardware/cad/servo-dummy`), the robot model used for training (`hardware/rev-a/mjcf`), the [Xiaohei HD-1910 simulation model](hardware/rev-a/mjcf-hd1910/) |

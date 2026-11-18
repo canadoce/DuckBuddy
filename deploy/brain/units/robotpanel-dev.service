@@ -1,0 +1,14 @@
+[Unit]
+Description=robotpanel (brain): a small control page for the body (stand, policy on/off, relax, head), :8090 on the local network
+After=robotd-dev.service
+
+[Service]
+ExecStart=/usr/bin/python3 %h/robotpanel/robotpanel.py
+WorkingDirectory=%h/robotpanel
+StandardOutput=append:%h/robot/recs/robotpanel-service.log
+StandardError=append:%h/robot/recs/robotpanel-service.log
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
