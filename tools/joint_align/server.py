@@ -101,7 +101,7 @@ class Live:
         self.status = "Not connected"
         self.policy = None
 
-    def set(self, joints, gravity, policy):
+    def set(self, joints, gravity, policy, status="Connected"):
         with self.lock:
             if joints and len(joints) == 15:
                 self.joints = list(joints)
@@ -109,14 +109,41 @@ class Live:
                 self.gravity = list(gravity)
             self.policy = policy
             self.stamp = time.time()
-            self.status = "Connected"
+            self.status = status
 
     def get(self):
         with self.lock:
             return list(self.joints), list(self.gravity), self.stamp, self.status, self.policy
 
 
-def reader(live, host, start_robotd):
+def read_direct(live, call, calib):
+    """While robotd is stopped, read the servos straight off the bus through the bring-up agent (`call`), so the
+    view stays live for centring and the fine-tune. The angles use the config robotd would use (calib.loaded),
+    as robotd's own would. Returns when robotd runs again (the agent then refuses the bus) or a read fails."""
+    while True:
+        try:
+            raw = call("read_positions", {}, timeout=10)["positions"]
+        except RuntimeError as e:
+            if "robotd is running" not in str(e):
+                live.status = f"Disconnected: {e}"
+            return
+        with calib.lock:
+            loaded = calib.loaded
+        if not loaded:
+            live.status = "robotd stopped; waiting for the config"
+            time.sleep(1)
+            continue
+        joints = live.get()[0]
+        for i, r in enumerate(raw):
+            if r is not None:
+                joints[i] = loaded[0][i] * (r - 2048 - loaded[1][i]) * RAD_PER_COUNT
+        live.set(joints, None, None, status="robotd stopped: servos read from the bus, IMU not updated")
+        time.sleep(0.2)
+
+
+def reader(live, host, start_robotd, direct=None, calib=None):
+    """Follow robotd's robot.state. With `direct` (the bring-up agent's call) and `calib`, fall back to reading the
+    servos from the bus while robotd is stopped."""
     first = True
     while True:
         if start_robotd:
@@ -150,6 +177,8 @@ def reader(live, host, start_robotd):
             live.status = "Disconnected: " + (err[-1] if err else "is robotd running?")
         except Exception as e:  # noqa: BLE001
             live.status = f"Disconnected: {e}"
+        if direct and calib:
+            read_direct(live, direct, calib)
         time.sleep(2)
 
 

@@ -209,10 +209,11 @@ class Calibration:
             ja = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(ja)
             live = ja.Live()
-            # on the first connection joint_align sends robot.relax (the page has already confirmed the robot is lying down / held)
-            threading.Thread(target=ja.reader, args=(live, self.a.host, False), daemon=True).start()
             calib = ja.Calib(self.a.host, self.a.config, self.a.restart_cmd, self.a.init_cmd)
             threading.Thread(target=calib.load, daemon=True).start()
+            # on the first connection joint_align sends robot.relax (the page has already confirmed the robot is lying down / held);
+            # while robotd is stopped, the servos are read through the robot agent instead
+            threading.Thread(target=ja.reader, args=(live, self.a.host, False, self.robot.call, calib), daemon=True).start()
             handler = ja.make_handler(live, ja.Renderer(), False, calib, self.robot.call)
             srv = ThreadingHTTPServer((self.a.listen, self.a.port + 1), handler)
             threading.Thread(target=srv.serve_forever, daemon=True).start()

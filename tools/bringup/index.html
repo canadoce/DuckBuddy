@@ -369,7 +369,7 @@ kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; backgro
   <div class="note">Uses <code>tools/joint_align</code>: renders the robot's live joint angles on the training model; each joint can be "reversed", "set to zero", or fine-tuned by ±0.5°.
     "Write config" backs up first, then changes <code>joint_signs</code> / <code>joint_offsets</code> in <span id="zr-config"></span> on the robot,
     then runs <code id="zr-restart"></code>; "Write and go home" also runs <code id="zr-init"></code>.<br>
-    Needs robotd running. <b>The first connection sends robot.relax (the whole body relaxes)</b>, so lay the robot down or hold it first.
+    Reads the joints from robotd while it runs; while robotd is stopped (for centring and the fine-tune) it reads the servos straight from the bus, without the IMU. <b>The first connection sends robot.relax (the whole body relaxes)</b>, so lay the robot down or hold it first.
     Zero reference: pose thigh, shin and torso like the "zero reference" picture on the page; standing on home, the soles are flat and IMU torso pitch ≈ 0.</div>
   <div class="row"><button id="zr-start" class="primary">Start calibration</button><span id="zr-state" class="muted"></span></div>
   <div id="zr-frame"></div>

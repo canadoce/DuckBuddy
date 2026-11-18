@@ -655,6 +655,28 @@ def op_wiggle(args):
                 msg=("aborted: " + result if result else ("reached" if ok else "one step did not reach its target (error > 2.5°)")) + "; torque released")
 
 
+def op_read_positions(args):
+    """Present position of every joint's servo, in joint order (None for a joint with no servo or no reply).
+    The calibration page's live view while robotd is stopped; like every bus operation, refused while robotd runs."""
+    if Ctx.usb:
+        raise BusError("reading the joints needs the robot bus")
+    Ctx.config, _ = load_config(Ctx.cfg_path)
+    ids = bus_cfg().get("joint_ids", [])
+    if len(ids) != 15:
+        raise BusError("write the ID mapping of all 15 joints first")
+    with bus_session() as bus:
+        got = bus.sync_read([sid for sid in ids if sid], PRES_POS, 2)
+        positions = []
+        for sid in ids:
+            if not sid:
+                positions.append(None)
+            elif sid in got:
+                positions.append(smag(got[sid][0] | got[sid][1] << 8))
+            else:
+                positions.append(bus.pos(sid))
+    return dict(positions=positions)
+
+
 def op_calibration_hold(args):
     """Position-mode bench calibration on the robot bus."""
     if Ctx.usb:
